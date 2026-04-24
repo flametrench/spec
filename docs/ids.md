@@ -106,7 +106,7 @@ An implementation's `decode(id)` function:
 2. MUST verify that the prefix before the separator is in the registered set, raising `InvalidTypeError` otherwise.
 3. MUST verify that the payload after the separator is exactly 32 characters of lowercase hex (`[0-9a-f]{32}`), raising `InvalidIdError` otherwise. Uppercase hex MUST be rejected.
 4. MUST reconstruct the canonical UUID form by inserting hyphens at positions 8, 12, 16, and 20 of the payload.
-5. MUST verify the reconstructed UUID is a valid UUID, raising `InvalidIdError` otherwise.
+5. MUST verify that the reconstructed UUID's version nibble (position 13 of the hyphenated form, i.e. the first character of the third group) is one of `1` through `8`, raising `InvalidIdError` otherwise. This explicitly rejects the Nil UUID (version 0) and the Max UUID (version 15 / `f`), which some general-purpose UUID validators accept but which are not valid Flametrench identifiers.
 6. MUST return a structured result containing the type and the canonical UUID string.
 
 ## Generation
@@ -141,7 +141,9 @@ And MUST reject the following inputs as invalid:
 | `usr_0190f2a81b3c7abc8123456789abcdeg0`          | Non-hex character              |
 | `usr_`                                           | Empty payload                  |
 | empty string                                     | Empty input                    |
+| `usr_00000000000000000000000000000000`           | Nil UUID (version nibble = 0)  |
+| `usr_ffffffffffffffffffffffffffffffff`           | Max UUID (version nibble = f)  |
 
 ## Change history
 
-- **v0.1 (draft, 2026)** — Initial specification. Registered prefixes for identity, tenancy, authorization. Reserved prefixes for future capabilities.
+- **v0.1 (draft, 2026)** — Initial specification. Registered prefixes for identity, tenancy, authorization. Reserved prefixes for future capabilities. Decoding rule 5 clarified to require version nibble in `[1-8]`, explicitly rejecting Nil and Max UUIDs.

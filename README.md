@@ -22,13 +22,13 @@ This project is named for that piece of infrastructure. Identity, tenancy, and a
 
 ## The v0.1 scope
 
-Flametrench v0.1 covers three capabilities:
+Flametrench v0.1 covers three capabilities. Detailed specs live in [`docs/identity.md`](docs/identity.md), [`docs/tenancy.md`](docs/tenancy.md), and [`docs/authorization.md`](docs/authorization.md); the design decisions behind them are recorded in [`decisions/`](decisions/).
 
-**Identity.** Users, credentials, sessions, email + password, passkeys (WebAuthn), OAuth and OIDC providers, MFA (TOTP and WebAuthn as second factor), email verification, password reset, magic links, account linking.
+**Identity.** Opaque users (`usr_`); multiple credentials per user (`cred_`) with three types — password (Argon2id, parameters pinned), passkey (WebAuthn), OIDC. User-bound sessions (`ses_`) with rotation on refresh. MFA is deferred to v0.2+; applications can layer it on by chaining credential verifications.
 
-**Tenancy.** Organizations as the tenant primitive. Memberships with role-per-membership. Invitations with expiring tokens. Ownership and ownership transfer. Soft-delete and restore.
+**Tenancy.** Flat organizations (`org_`); multi-organization memberships (`mem_`); five-state invitations (`inv_`) with atomic acceptance and resource-scoped pre-declared tuples. Role changes use a revoke-and-re-add chain for tamper-evident history. Sole-owner protection on both self-leave and admin-remove paths.
 
-**Authorization.** Zanzibar-style relationship tuples as the storage model. A small policy DSL that compiles to tuple checks. Resource-scoped permissions. Role templates as sugar over tuples. An introspection endpoint so admin UIs can render policy editors.
+**Authorization.** Relational tuples (`tup_`) as the only authz primitive; exact-match `check()` over single relations or non-empty relation sets. Six built-in relations (`owner`, `admin`, `member`, `guest`, `viewer`, `editor`) plus application-registered custom relations. No rewrite rules or derivations in v0.1 — applications materialize implied grants or compose checks at call sites. Rewrite rules, group subjects, and parent-child inheritance are deferred to v0.2+.
 
 Everything else — audit logs, notifications, file handling, billing hooks, feature flags — is explicitly out of scope for v0.1 and arrives in later versions. Shipping narrow is the point.
 
@@ -70,21 +70,23 @@ flametrench/spec/
 ├── README.md                    this document
 ├── LICENSE                      Apache 2.0
 ├── NOTICE                       copyright attribution
-├── CODE_OF_CONDUCT.md           Contributor Covenant 2.1
-├── CONTRIBUTING.md              how to propose changes
-├── openapi/
-│   ├── identity.yaml            identity capability (in draft)
-│   ├── tenancy.yaml             tenancy capability (planned)
-│   ├── authz.yaml               authorization capability (planned)
-│   └── meta.yaml                schema introspection endpoint (planned)
 ├── docs/
-│   ├── semantics.md             behavior OpenAPI can't express
-│   ├── versioning.md            versioning policy
-│   ├── ids.md                   ID format specification
-│   ├── errors.md                error taxonomy
-│   └── pagination.md            cursor-based pagination rules
-└── conformance/
-    └── README.md                how the conformance suite works
+│   ├── ids.md                   ID format (normative)
+│   ├── identity.md              identity capability (normative)
+│   ├── tenancy.md               tenancy capability (normative)
+│   └── authorization.md         authorization capability (normative)
+├── decisions/                   Architecture Decision Records
+│   ├── README.md                index + ADR writing guide
+│   ├── 0001-authorization-model.md
+│   ├── 0002-tenancy-model.md
+│   ├── 0003-invitation-state-machine.md
+│   ├── 0004-identity-model.md
+│   └── 0005-revoke-and-re-add.md
+├── reference/                   non-normative implementation artifacts
+│   ├── README.md                conventions; what's normative vs reference
+│   └── postgres.sql             reference Postgres DDL
+├── openapi/                     HTTP surface (in progress)
+└── conformance/                 conformance fixtures (in progress)
 ```
 
 ## How to follow along
