@@ -1,0 +1,1522 @@
+openapi: 3.1.0
+
+info:
+  title: Flametrench
+  version: 0.1.0-draft
+  summary: Backbone infrastructure for applications — identity, tenancy, authorization.
+  description: |
+    The normative HTTP surface for Flametrench v0.1. Every conforming server
+    MUST expose these operations with the shapes defined here.
+
+    This document defines the wire contract. The data model and state-machine
+    semantics are defined in the chapter documents:
+
+      - `../docs/identity.md`
+      - `../docs/tenancy.md`
+      - `../docs/authorization.md`
+
+    Design rationale for the decisions embodied here lives in `../decisions/`.
+
+    **Status:** draft. This file will stabilize as conforming implementations
+    come online and surface interoperability questions.
+  contact:
+    name: NDC Digital, LLC
+    url: https://flametrench.dev
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: https://{host}/v1
+    description: Conforming Flametrench server
+    variables:
+      host:
+        default: api.example.com
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Users
+    description: Opaque user identities (usr_).
+  - name: Credentials
+    description: |
+      Authentication credentials (cred_). Three types: password (Argon2id),
+      passkey (WebAuthn), oidc.
+  - name: Sessions
+    description: |
+      Authenticated sessions (ses_). User-bound; rotated on refresh.
+  - name: Organizations
+    description: Tenancy organizations (org_). Flat hierarchy in v0.1.
+  - name: Memberships
+    description: |
+      User-to-organization membership (mem_). Carries a role. Duplicated
+      as a tup_ row for uniform authorization.
+  - name: Invitations
+    description: |
+      Pending invitations to join organizations (inv_). Five-state lifecycle.
+  - name: Tuples
+    description: |
+      Authorization tuples (tup_). The sole authz primitive in v0.1.
+      Exact-match check semantics; no rewrite rules.
+
+paths:
+
+  # ──────────────────────── Users ────────────────────────
+
+  /users:
+    post:
+      tags: [Users]
+      summary: Create a new user
+      operationId: createUser
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties: {}
+      responses:
+        '201':
+          description: User created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /users/{usr_id}:
+    parameters:
+      - $ref: '#/components/parameters/UsrId'
+    get:
+      tags: [Users]
+      summary: Get a user
+      operationId: getUser
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /users/{usr_id}/suspend:
+    parameters: [ { $ref: '#/components/parameters/UsrId' } ]
+    post:
+      tags: [Users]
+      summary: Suspend a user
+      description: |
+        Transitions `usr.status` to `suspended`. MUST terminate all active
+        sessions for this user. Memberships remain in their current status.
+      operationId: suspendUser
+      responses:
+        '200': { $ref: '#/components/responses/UserOk' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /users/{usr_id}/reinstate:
+    parameters: [ { $ref: '#/components/parameters/UsrId' } ]
+    post:
+      tags: [Users]
+      summary: Reinstate a suspended user
+      operationId: reinstateUser
+      responses:
+        '200': { $ref: '#/components/responses/UserOk' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /users/{usr_id}/revoke:
+    parameters: [ { $ref: '#/components/parameters/UsrId' } ]
+    post:
+      tags: [Users]
+      summary: Revoke a user (terminal)
+      description: |
+        Transitions `usr.status` to `revoked`. MUST:
+          - Terminate all active sessions for this user.
+          - Transition all active credentials to `revoked`.
+          - Preserve the `usr_` row for audit.
+      operationId: revokeUser
+      responses:
+        '200': { $ref: '#/components/responses/UserOk' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /users/{usr_id}/sessions:
+    parameters: [ { $ref: '#/components/parameters/UsrId' } ]
+    get:
+      tags: [Sessions]
+      summary: List sessions for a user
+      operationId: listUserSessions
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionPage' }
+
+  # ─────────────────────── Credentials ───────────────────────
+
+  /credentials:
+    post:
+      tags: [Credentials]
+      summary: Create a credential for a user
+      operationId: createCredential
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCredentialRequest' }
+      responses:
+        '201':
+          description: Credential created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Credential' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /credentials/verify:
+    post:
+      tags: [Credentials]
+      summary: Verify a credential proof
+      description: |
+        Verifies a proof (password, WebAuthn assertion, OIDC ID token) and,
+        on success, returns the `usr_id` of the authenticated user and the
+        `cred_id` of the matching credential. Used as the identification
+        step before `createSession`.
+      operationId: verifyCredential
+      security: []  # no existing session required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VerifyCredentialRequest' }
+      responses:
+        '200':
+          description: Credential verified.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VerifyCredentialResponse' }
+        '401':
+          description: Verification failed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /credentials/{cred_id}:
+    parameters: [ { $ref: '#/components/parameters/CredId' } ]
+    get:
+      tags: [Credentials]
+      summary: Get a credential
+      description: |
+        Never returns sensitive payload fields (password hash, passkey
+        private material). Sensitive fields are omitted from the response.
+      operationId: getCredential
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Credential' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /credentials/{cred_id}/rotate:
+    parameters: [ { $ref: '#/components/parameters/CredId' } ]
+    post:
+      tags: [Credentials]
+      summary: Rotate a credential
+      description: |
+        Revoke-and-re-add: existing cred goes to `revoked`; new cred is
+        inserted with `replaces = old.id`. Sessions bound to the old
+        credential MUST be terminated in the same transaction.
+      operationId: rotateCredential
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RotateCredentialRequest' }
+      responses:
+        '200':
+          description: Rotated; new credential returned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Credential' }
+
+  /credentials/{cred_id}/suspend:
+    parameters: [ { $ref: '#/components/parameters/CredId' } ]
+    post:
+      tags: [Credentials]
+      summary: Suspend a credential
+      operationId: suspendCredential
+      responses:
+        '200': { $ref: '#/components/responses/CredOk' }
+
+  /credentials/{cred_id}/reinstate:
+    parameters: [ { $ref: '#/components/parameters/CredId' } ]
+    post:
+      tags: [Credentials]
+      summary: Reinstate a suspended credential
+      operationId: reinstateCredential
+      responses:
+        '200': { $ref: '#/components/responses/CredOk' }
+
+  /credentials/{cred_id}/revoke:
+    parameters: [ { $ref: '#/components/parameters/CredId' } ]
+    post:
+      tags: [Credentials]
+      summary: Revoke a credential (terminal)
+      description: |
+        MUST terminate all sessions bound to this credential in the same
+        transaction.
+      operationId: revokeCredential
+      responses:
+        '200': { $ref: '#/components/responses/CredOk' }
+
+  # ──────────────────────── Sessions ────────────────────────
+
+  /sessions:
+    post:
+      tags: [Sessions]
+      summary: Create a session (login)
+      description: |
+        Creates a new session for a previously-verified credential. The
+        caller typically chains `verifyCredential` → `createSession`.
+
+        Returns the session metadata AND a bearer token. The token is the
+        value clients pass in `Authorization: Bearer` on subsequent
+        requests; the `ses.id` is NOT the token.
+      operationId: createSession
+      security: []  # login endpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateSessionRequest' }
+      responses:
+        '201':
+          description: Session created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreateSessionResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /sessions/{ses_id}:
+    parameters: [ { $ref: '#/components/parameters/SesId' } ]
+    get:
+      tags: [Sessions]
+      summary: Get a session
+      operationId: getSession
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /sessions/{ses_id}/refresh:
+    parameters: [ { $ref: '#/components/parameters/SesId' } ]
+    post:
+      tags: [Sessions]
+      summary: Refresh a session (rotate)
+      description: |
+        Creates a NEW session (new `ses_id`, new token) and marks the
+        previous one `revoked_at = now()`. In-place refresh is NOT
+        spec-conformant.
+      operationId: refreshSession
+      responses:
+        '201':
+          description: Refreshed; new session returned with new token.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreateSessionResponse' }
+
+  /sessions/{ses_id}/revoke:
+    parameters: [ { $ref: '#/components/parameters/SesId' } ]
+    post:
+      tags: [Sessions]
+      summary: Revoke a session
+      operationId: revokeSession
+      responses:
+        '200':
+          description: Revoked.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+
+  # ─────────────────────── Organizations ───────────────────────
+
+  /orgs:
+    post:
+      tags: [Organizations]
+      summary: Create an organization
+      description: |
+        Creates the `org_` AND the creator's owner membership in a single
+        transaction. Both IDs are returned.
+      operationId: createOrg
+      responses:
+        '201':
+          description: Org created with creator as owner.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreateOrgResponse' }
+
+  /orgs/{org_id}:
+    parameters: [ { $ref: '#/components/parameters/OrgId' } ]
+    get:
+      tags: [Organizations]
+      summary: Get an organization
+      operationId: getOrg
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Organization' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /orgs/{org_id}/suspend:
+    parameters: [ { $ref: '#/components/parameters/OrgId' } ]
+    post:
+      tags: [Organizations]
+      summary: Suspend an organization
+      operationId: suspendOrg
+      responses:
+        '200': { $ref: '#/components/responses/OrgOk' }
+
+  /orgs/{org_id}/reinstate:
+    parameters: [ { $ref: '#/components/parameters/OrgId' } ]
+    post:
+      tags: [Organizations]
+      summary: Reinstate a suspended organization
+      operationId: reinstateOrg
+      responses:
+        '200': { $ref: '#/components/responses/OrgOk' }
+
+  /orgs/{org_id}/revoke:
+    parameters: [ { $ref: '#/components/parameters/OrgId' } ]
+    post:
+      tags: [Organizations]
+      summary: Revoke an organization (terminal)
+      description: |
+        MUST transition all active memberships to `revoked` and terminate
+        all sessions scoped to the org.
+      operationId: revokeOrg
+      responses:
+        '200': { $ref: '#/components/responses/OrgOk' }
+
+  /orgs/{org_id}/transfer-ownership:
+    parameters: [ { $ref: '#/components/parameters/OrgId' } ]
+    post:
+      tags: [Organizations]
+      summary: Transfer ownership
+      description: |
+        Atomically transfers the `owner` role from the current owner to
+        another active member. The only path by which an org's sole owner
+        may leave the org (see `selfLeave`).
+      operationId: transferOwnership
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransferOwnershipRequest' }
+      responses:
+        '200':
+          description: Transferred.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransferOwnershipResponse' }
+
+  # ─────────────────────── Memberships ───────────────────────
+
+  /orgs/{org_id}/members:
+    parameters: [ { $ref: '#/components/parameters/OrgId' } ]
+    get:
+      tags: [Memberships]
+      summary: List members of an organization
+      description: |
+        Paginated with UUIDv7-ordered cursor. Applications SHOULD gate this
+        endpoint via `check(subject, list_members, org)` or equivalent.
+      operationId: listMembers
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: status
+          in: query
+          description: Filter by membership status.
+          schema:
+            type: string
+            enum: [active, suspended, revoked]
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MembershipPage' }
+    post:
+      tags: [Memberships]
+      summary: Add a member (admin)
+      description: |
+        Creates an active `mem_` and the corresponding `tup_` row in one
+        transaction. Caller must hold owner or admin on the org.
+      operationId: addMember
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddMemberRequest' }
+      responses:
+        '201':
+          description: Member added.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Membership' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /orgs/{org_id}/members/{mem_id}:
+    parameters:
+      - $ref: '#/components/parameters/OrgId'
+      - $ref: '#/components/parameters/MemId'
+    get:
+      tags: [Memberships]
+      summary: Get a membership
+      operationId: getMembership
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Membership' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /orgs/{org_id}/members/{mem_id}/change-role:
+    parameters:
+      - $ref: '#/components/parameters/OrgId'
+      - $ref: '#/components/parameters/MemId'
+    post:
+      tags: [Memberships]
+      summary: Change a member's role
+      description: |
+        Revoke-and-re-add: current `mem_` goes to `revoked`; new `mem_`
+        inserted with the new role and `replaces = old.id`. Old `tup_`
+        removed; new `tup_` inserted. All in one transaction.
+      operationId: changeRole
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangeRoleRequest' }
+      responses:
+        '200':
+          description: Role changed; new membership returned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Membership' }
+
+  /orgs/{org_id}/members/{mem_id}/suspend:
+    parameters:
+      - $ref: '#/components/parameters/OrgId'
+      - $ref: '#/components/parameters/MemId'
+    post:
+      tags: [Memberships]
+      summary: Suspend a membership
+      operationId: suspendMembership
+      responses:
+        '200': { $ref: '#/components/responses/MembershipOk' }
+
+  /orgs/{org_id}/members/{mem_id}/reinstate:
+    parameters:
+      - $ref: '#/components/parameters/OrgId'
+      - $ref: '#/components/parameters/MemId'
+    post:
+      tags: [Memberships]
+      summary: Reinstate a suspended membership
+      operationId: reinstateMembership
+      responses:
+        '200': { $ref: '#/components/responses/MembershipOk' }
+
+  /orgs/{org_id}/members/{mem_id}/self-leave:
+    parameters:
+      - $ref: '#/components/parameters/OrgId'
+      - $ref: '#/components/parameters/MemId'
+    post:
+      tags: [Memberships]
+      summary: Self-leave (member removes themselves)
+      description: |
+        The subject MUST be the owner of the membership being left. If
+        the subject is the org's sole active owner, `transferTo` is
+        REQUIRED in the request body; the operation performs the
+        ownership transfer and the leave atomically.
+
+        Effect: `mem.status = revoked`, `mem.removed_by = NULL`
+        (the null distinguishes self-initiated from admin-initiated).
+      operationId: selfLeave
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SelfLeaveRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/MembershipOk' }
+        '409':
+          description: |
+            Rejected. Common cause: sole-owner without `transferTo`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /orgs/{org_id}/members/{mem_id}/admin-remove:
+    parameters:
+      - $ref: '#/components/parameters/OrgId'
+      - $ref: '#/components/parameters/MemId'
+    post:
+      tags: [Memberships]
+      summary: Admin removes a member
+      description: |
+        Authorization: caller MUST hold `owner` or `admin` relation on
+        the org. Precondition: caller's role ≥ target's role (admins
+        cannot remove owners). Owner removal is only possible via
+        `transferOwnership`, not through this endpoint.
+
+        Effect: `mem.status = revoked`, `mem.removed_by = <admin usr_id>`.
+      operationId: adminRemove
+      responses:
+        '200': { $ref: '#/components/responses/MembershipOk' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ─────────────────────── Invitations ───────────────────────
+
+  /orgs/{org_id}/invitations:
+    parameters: [ { $ref: '#/components/parameters/OrgId' } ]
+    get:
+      tags: [Invitations]
+      summary: List invitations for an org
+      operationId: listInvitations
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, accepted, declined, revoked, expired]
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InvitationPage' }
+    post:
+      tags: [Invitations]
+      summary: Create an invitation
+      operationId: createInvitation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateInvitationRequest' }
+      responses:
+        '201':
+          description: Invitation created in pending state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invitation' }
+
+  /invitations/{inv_id}:
+    parameters: [ { $ref: '#/components/parameters/InvId' } ]
+    get:
+      tags: [Invitations]
+      summary: Get an invitation
+      operationId: getInvitation
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invitation' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /invitations/{inv_id}/accept:
+    parameters: [ { $ref: '#/components/parameters/InvId' } ]
+    post:
+      tags: [Invitations]
+      summary: Accept an invitation
+      description: |
+        Transactional acceptance. All of the following happen atomically:
+
+          1. Resolve or create the invitee's `usr_id`.
+          2. Insert `mem_` for the new membership.
+          3. Insert the corresponding `tup_`.
+          4. Expand `inv.pre_tuples` into `tup_` rows (subject = invitee).
+          5. Transition `inv.status = accepted`, set `terminal_at`,
+             `terminal_by = usr_id`, `invited_user_id = usr_id`.
+
+        On any failure, the entire transaction rolls back; the invitation
+        remains `pending`.
+      operationId: acceptInvitation
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AcceptInvitationRequest' }
+      responses:
+        '200':
+          description: Accepted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AcceptInvitationResponse' }
+        '409':
+          description: |
+            Rejected. Common causes: invitation is expired; invitation is
+            already terminal; identifier does not match the authenticated
+            user.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /invitations/{inv_id}/decline:
+    parameters: [ { $ref: '#/components/parameters/InvId' } ]
+    post:
+      tags: [Invitations]
+      summary: Decline an invitation
+      operationId: declineInvitation
+      responses:
+        '200':
+          description: Declined.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invitation' }
+
+  /invitations/{inv_id}/revoke:
+    parameters: [ { $ref: '#/components/parameters/InvId' } ]
+    post:
+      tags: [Invitations]
+      summary: Revoke an invitation (admin)
+      operationId: revokeInvitation
+      responses:
+        '200':
+          description: Revoked.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invitation' }
+
+  # ─────────────────────── Tuples ───────────────────────
+
+  /tuples:
+    post:
+      tags: [Tuples]
+      summary: Create an authorization tuple
+      description: |
+        Inserts a new tup_ row. The natural key (subject_type, subject_id,
+        relation, object_type, object_id) MUST be unique across non-deleted
+        tuples; duplicates return 409.
+      operationId: createTuple
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTupleRequest' }
+      responses:
+        '201':
+          description: Tuple created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tuple' }
+        '409':
+          description: A tuple with this natural key already exists.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /tuples/{tup_id}:
+    parameters: [ { $ref: '#/components/parameters/TupId' } ]
+    delete:
+      tags: [Tuples]
+      summary: Delete a tuple
+      operationId: deleteTuple
+      responses:
+        '204':
+          description: Deleted.
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /tuples/check:
+    post:
+      tags: [Tuples]
+      summary: Check authorization
+      description: |
+        The exact-match authorization check. Accepts either a single
+        `relation` or a non-empty `relations` array. Returns true iff a
+        matching tuple exists.
+
+        v0.1 performs EXACT match only: no rewrite rules, no derivations,
+        no group expansion. Applications needing implied grants must
+        either materialize them as explicit tuples or compose checks at
+        the call site.
+      operationId: check
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CheckRequest' }
+      responses:
+        '200':
+          description: Check result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /tuples/by-subject:
+    get:
+      tags: [Tuples]
+      summary: List tuples by subject
+      description: |
+        Enumerate all tuples for a given subject. Paginated.
+      operationId: listTuplesBySubject
+      parameters:
+        - name: subject_type
+          in: query
+          required: true
+          schema: { type: string, enum: [usr] }
+        - name: subject_id
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/Uuid' }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TuplePage' }
+
+  /tuples/by-object:
+    get:
+      tags: [Tuples]
+      summary: List tuples by object
+      description: |
+        Enumerate all tuples on a given object, optionally filtered by
+        relation. Used to answer "who holds X on this object?"
+      operationId: listTuplesByObject
+      parameters:
+        - name: object_type
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/TypePrefix' }
+        - name: object_id
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/Uuid' }
+        - name: relation
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/RelationName' }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TuplePage' }
+
+# ─────────────────────── Components ───────────────────────
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Session bearer token. The token's internal format is
+        implementation-defined — a signed JWT with `ses.id` as a claim,
+        or an opaque string looked up server-side are both conformant.
+        The session `id` is NOT the token; it is an identifier.
+
+  parameters:
+
+    UsrId:
+      name: usr_id
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/UsrId' }
+
+    CredId:
+      name: cred_id
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/CredId' }
+
+    SesId:
+      name: ses_id
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/SesId' }
+
+    OrgId:
+      name: org_id
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/OrgId' }
+
+    MemId:
+      name: mem_id
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/MemId' }
+
+    InvId:
+      name: inv_id
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/InvId' }
+
+    TupId:
+      name: tup_id
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/TupId' }
+
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: |
+        Opaque pagination cursor returned from a previous page response.
+        Derived from UUIDv7 ordering; stable across inserts.
+      schema: { type: string }
+
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Maximum number of items per page. Default 50, max 200.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+
+  responses:
+
+    BadRequest:
+      description: Request was malformed.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    Unauthorized:
+      description: Authentication failed or missing.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    Forbidden:
+      description: Authenticated, but not permitted.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    NotFound:
+      description: Entity does not exist.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    Conflict:
+      description: Operation conflicts with the entity's current state.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    UserOk:
+      description: Operation succeeded; user returned.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/User' }
+
+    CredOk:
+      description: Operation succeeded; credential returned.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Credential' }
+
+    OrgOk:
+      description: Operation succeeded; organization returned.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Organization' }
+
+    MembershipOk:
+      description: Operation succeeded; membership returned.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Membership' }
+
+  schemas:
+
+    # ─── Primitive types ───
+
+    Uuid:
+      type: string
+      format: uuid
+      description: Canonical hyphenated UUIDv7.
+      example: '0190f2a8-1b3c-7abc-8123-456789abcdef'
+
+    TypePrefix:
+      type: string
+      pattern: '^[a-z]{2,6}$'
+      description: |
+        A Flametrench type prefix. 2-6 lowercase ASCII characters.
+        See `docs/ids.md` for the registry.
+      example: 'usr'
+
+    RelationName:
+      type: string
+      pattern: '^[a-z_]{2,32}$'
+      description: |
+        An authorization relation name. Either one of the six built-in
+        relations (owner, admin, member, guest, viewer, editor) or an
+        application-registered custom relation.
+      example: 'admin'
+
+    Timestamp:
+      type: string
+      format: date-time
+      description: RFC 3339 timestamp, timezone-aware.
+      example: '2026-04-24T00:00:00Z'
+
+    Status:
+      type: string
+      enum: [active, suspended, revoked]
+      description: Tri-state lifecycle status.
+
+    Role:
+      type: string
+      enum: [owner, admin, member, guest, viewer, editor]
+      description: One of the six v0.1 built-in relation names.
+
+    # ─── Wire-format ID strings ───
+
+    UsrId:
+      type: string
+      pattern: '^usr_[0-9a-f]{32}$'
+      example: 'usr_0190f2a81b3c7abc8123456789abcdef'
+
+    CredId:
+      type: string
+      pattern: '^cred_[0-9a-f]{32}$'
+      example: 'cred_0190f2a81b3c7abc8123456789abcdef'
+
+    SesId:
+      type: string
+      pattern: '^ses_[0-9a-f]{32}$'
+      example: 'ses_0190f2a81b3c7abc8123456789abcdef'
+
+    OrgId:
+      type: string
+      pattern: '^org_[0-9a-f]{32}$'
+      example: 'org_0190f2a81b3c7abc8123456789abcdef'
+
+    MemId:
+      type: string
+      pattern: '^mem_[0-9a-f]{32}$'
+      example: 'mem_0190f2a81b3c7abc8123456789abcdef'
+
+    InvId:
+      type: string
+      pattern: '^inv_[0-9a-f]{32}$'
+      example: 'inv_0190f2a81b3c7abc8123456789abcdef'
+
+    TupId:
+      type: string
+      pattern: '^tup_[0-9a-f]{32}$'
+      example: 'tup_0190f2a81b3c7abc8123456789abcdef'
+
+    # ─── Entity schemas ───
+
+    User:
+      type: object
+      required: [id, status, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        id:         { $ref: '#/components/schemas/UsrId' }
+        status:     { $ref: '#/components/schemas/Status' }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        updated_at: { $ref: '#/components/schemas/Timestamp' }
+
+    Credential:
+      type: object
+      required: [id, usr_id, type, identifier, status, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        id:         { $ref: '#/components/schemas/CredId' }
+        usr_id:     { $ref: '#/components/schemas/UsrId' }
+        type:
+          type: string
+          enum: [password, passkey, oidc]
+        identifier: { type: string }
+        status:     { $ref: '#/components/schemas/Status' }
+        replaces:
+          oneOf:
+            - $ref: '#/components/schemas/CredId'
+            - type: 'null'
+        # Type-specific non-sensitive fields. Password hash bytes and passkey
+        # private material are NEVER returned by the API.
+        passkey_rp_id:
+          type: [string, 'null']
+        oidc_issuer:
+          type: [string, 'null']
+        oidc_subject:
+          type: [string, 'null']
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        updated_at: { $ref: '#/components/schemas/Timestamp' }
+
+    Session:
+      type: object
+      required: [id, usr_id, cred_id, created_at, expires_at]
+      additionalProperties: false
+      properties:
+        id:         { $ref: '#/components/schemas/SesId' }
+        usr_id:     { $ref: '#/components/schemas/UsrId' }
+        cred_id:    { $ref: '#/components/schemas/CredId' }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+        revoked_at:
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+
+    Organization:
+      type: object
+      required: [id, status, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        id:         { $ref: '#/components/schemas/OrgId' }
+        status:     { $ref: '#/components/schemas/Status' }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        updated_at: { $ref: '#/components/schemas/Timestamp' }
+
+    Membership:
+      type: object
+      required: [id, usr_id, org_id, role, status, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        id:         { $ref: '#/components/schemas/MemId' }
+        usr_id:     { $ref: '#/components/schemas/UsrId' }
+        org_id:     { $ref: '#/components/schemas/OrgId' }
+        role:       { $ref: '#/components/schemas/Role' }
+        status:     { $ref: '#/components/schemas/Status' }
+        replaces:
+          oneOf:
+            - $ref: '#/components/schemas/MemId'
+            - type: 'null'
+        invited_by:
+          oneOf:
+            - $ref: '#/components/schemas/UsrId'
+            - type: 'null'
+        removed_by:
+          description: |
+            `null` for self-leave; set to the admin's usr_id for
+            admin-remove. Telltale field for audit attribution.
+          oneOf:
+            - $ref: '#/components/schemas/UsrId'
+            - type: 'null'
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        updated_at: { $ref: '#/components/schemas/Timestamp' }
+
+    PreTuple:
+      type: object
+      required: [relation, object_type, object_id]
+      additionalProperties: false
+      description: |
+        A resource-scoped grant pre-declared on an invitation. Materialized
+        as a `tup_` row at accept time with subject = the accepting user.
+      properties:
+        relation:    { $ref: '#/components/schemas/RelationName' }
+        object_type: { $ref: '#/components/schemas/TypePrefix' }
+        object_id:   { $ref: '#/components/schemas/Uuid' }
+
+    Invitation:
+      type: object
+      required: [id, org_id, identifier, role, status, pre_tuples, invited_by, created_at, expires_at]
+      additionalProperties: false
+      properties:
+        id:         { $ref: '#/components/schemas/InvId' }
+        org_id:     { $ref: '#/components/schemas/OrgId' }
+        identifier: { type: string }
+        role:       { $ref: '#/components/schemas/Role' }
+        status:
+          type: string
+          enum: [pending, accepted, declined, revoked, expired]
+        pre_tuples:
+          type: array
+          items: { $ref: '#/components/schemas/PreTuple' }
+        invited_by: { $ref: '#/components/schemas/UsrId' }
+        invited_user_id:
+          oneOf:
+            - $ref: '#/components/schemas/UsrId'
+            - type: 'null'
+        created_at:  { $ref: '#/components/schemas/Timestamp' }
+        expires_at:  { $ref: '#/components/schemas/Timestamp' }
+        terminal_at:
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+        terminal_by:
+          oneOf:
+            - $ref: '#/components/schemas/UsrId'
+            - type: 'null'
+
+    Tuple:
+      type: object
+      required: [id, subject_type, subject_id, relation, object_type, object_id, created_at]
+      additionalProperties: false
+      properties:
+        id:           { $ref: '#/components/schemas/TupId' }
+        subject_type:
+          type: string
+          enum: [usr]
+          description: v0.1 constraint; `grp` is deferred to v0.2+.
+        subject_id:   { $ref: '#/components/schemas/Uuid' }
+        relation:     { $ref: '#/components/schemas/RelationName' }
+        object_type:  { $ref: '#/components/schemas/TypePrefix' }
+        object_id:    { $ref: '#/components/schemas/Uuid' }
+        created_at:   { $ref: '#/components/schemas/Timestamp' }
+        created_by:
+          oneOf:
+            - $ref: '#/components/schemas/UsrId'
+            - type: 'null'
+
+    Error:
+      type: object
+      required: [code, message]
+      additionalProperties: false
+      description: |
+        Error response. The `code` is a stable, machine-readable token;
+        `message` is a human-readable description; `details` is optional
+        structured context.
+      properties:
+        code:    { type: string, example: 'conflict.sole_owner' }
+        message: { type: string }
+        details:
+          type: object
+          additionalProperties: true
+
+    # ─── Request / response DTOs ───
+
+    CreateCredentialRequest:
+      oneOf:
+        - $ref: '#/components/schemas/CreateCredentialRequest_Password'
+        - $ref: '#/components/schemas/CreateCredentialRequest_Passkey'
+        - $ref: '#/components/schemas/CreateCredentialRequest_Oidc'
+      discriminator:
+        propertyName: type
+
+    CreateCredentialRequest_Password:
+      type: object
+      required: [usr_id, type, identifier, password]
+      additionalProperties: false
+      properties:
+        usr_id:     { $ref: '#/components/schemas/UsrId' }
+        type:       { const: password }
+        identifier: { type: string, example: 'alice@example.com' }
+        password:
+          type: string
+          description: |
+            The plaintext password. The server MUST hash it using Argon2id
+            with parameters at or above the spec floor (m=19456, t=2, p=1).
+            The plaintext MUST NOT be stored or logged.
+          minLength: 1
+
+    CreateCredentialRequest_Passkey:
+      type: object
+      required: [usr_id, type, identifier, public_key, sign_count, rp_id]
+      additionalProperties: false
+      properties:
+        usr_id:     { $ref: '#/components/schemas/UsrId' }
+        type:       { const: passkey }
+        identifier:
+          type: string
+          description: WebAuthn credential ID, base64url-encoded.
+        public_key:
+          type: string
+          format: byte
+          description: Raw public key bytes, base64-encoded.
+        sign_count: { type: integer, minimum: 0 }
+        rp_id:      { type: string }
+
+    CreateCredentialRequest_Oidc:
+      type: object
+      required: [usr_id, type, identifier, oidc_issuer, oidc_subject]
+      additionalProperties: false
+      properties:
+        usr_id:       { $ref: '#/components/schemas/UsrId' }
+        type:         { const: oidc }
+        identifier:   { type: string, example: 'alice@example.com' }
+        oidc_issuer:  { type: string, format: uri }
+        oidc_subject: { type: string }
+
+    VerifyCredentialRequest:
+      type: object
+      required: [type, identifier, proof]
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          enum: [password, passkey, oidc]
+        identifier: { type: string }
+        proof:
+          type: object
+          description: |
+            Type-specific proof. For password: `{ password }`. For passkey:
+            `{ assertion, client_data_json }`. For oidc: `{ id_token }`.
+          additionalProperties: true
+
+    VerifyCredentialResponse:
+      type: object
+      required: [usr_id, cred_id]
+      additionalProperties: false
+      properties:
+        usr_id:  { $ref: '#/components/schemas/UsrId' }
+        cred_id: { $ref: '#/components/schemas/CredId' }
+
+    RotateCredentialRequest:
+      type: object
+      description: |
+        Type-dependent rotation payload. For password: `{ password }`.
+        For passkey: `{ public_key, sign_count, rp_id }`. For oidc:
+        `{ oidc_issuer, oidc_subject }`.
+      additionalProperties: true
+
+    CreateSessionRequest:
+      type: object
+      required: [usr_id, cred_id, ttl_seconds]
+      additionalProperties: false
+      description: |
+        Caller has just executed `verifyCredential` and is exchanging the
+        result for a live session.
+      properties:
+        usr_id:      { $ref: '#/components/schemas/UsrId' }
+        cred_id:     { $ref: '#/components/schemas/CredId' }
+        ttl_seconds:
+          type: integer
+          minimum: 60
+          description: Desired session lifetime; server may cap.
+
+    CreateSessionResponse:
+      type: object
+      required: [session, token]
+      additionalProperties: false
+      properties:
+        session: { $ref: '#/components/schemas/Session' }
+        token:
+          type: string
+          description: |
+            Opaque bearer token. Clients pass this in the
+            `Authorization: Bearer` header on subsequent requests.
+            NOT the session's `id`.
+
+    CreateOrgResponse:
+      type: object
+      required: [org, owner_membership]
+      additionalProperties: false
+      properties:
+        org:              { $ref: '#/components/schemas/Organization' }
+        owner_membership: { $ref: '#/components/schemas/Membership' }
+
+    TransferOwnershipRequest:
+      type: object
+      required: [from_mem_id, to_mem_id]
+      additionalProperties: false
+      properties:
+        from_mem_id: { $ref: '#/components/schemas/MemId' }
+        to_mem_id:   { $ref: '#/components/schemas/MemId' }
+
+    TransferOwnershipResponse:
+      type: object
+      required: [from_membership, to_membership]
+      additionalProperties: false
+      description: |
+        Both memberships are returned in their new states. The previous
+        owner's membership is now at the configured relinquishment role
+        (typically `member`); the new owner's membership is at `owner`.
+      properties:
+        from_membership: { $ref: '#/components/schemas/Membership' }
+        to_membership:   { $ref: '#/components/schemas/Membership' }
+
+    AddMemberRequest:
+      type: object
+      required: [usr_id, role]
+      additionalProperties: false
+      properties:
+        usr_id:     { $ref: '#/components/schemas/UsrId' }
+        role:       { $ref: '#/components/schemas/Role' }
+        invited_by:
+          oneOf:
+            - $ref: '#/components/schemas/UsrId'
+            - type: 'null'
+
+    ChangeRoleRequest:
+      type: object
+      required: [new_role]
+      additionalProperties: false
+      properties:
+        new_role: { $ref: '#/components/schemas/Role' }
+
+    SelfLeaveRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Body required only when the leaving member is the org's sole
+        active owner; `transferTo` must then name another active member.
+      properties:
+        transferTo:
+          oneOf:
+            - $ref: '#/components/schemas/UsrId'
+            - type: 'null'
+
+    CreateInvitationRequest:
+      type: object
+      required: [identifier, role, expires_at]
+      additionalProperties: false
+      properties:
+        identifier: { type: string, example: 'carol@example.com' }
+        role:       { $ref: '#/components/schemas/Role' }
+        pre_tuples:
+          type: array
+          default: []
+          items: { $ref: '#/components/schemas/PreTuple' }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+
+    AcceptInvitationRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        If the invitee already has a `usr_` account, pass it as
+        `as_usr_id`. Otherwise the operation creates a new user and
+        returns its id.
+      properties:
+        as_usr_id:
+          oneOf:
+            - $ref: '#/components/schemas/UsrId'
+            - type: 'null'
+
+    AcceptInvitationResponse:
+      type: object
+      required: [invitation, membership]
+      additionalProperties: false
+      properties:
+        invitation:    { $ref: '#/components/schemas/Invitation' }
+        membership:    { $ref: '#/components/schemas/Membership' }
+        materialized_tuples:
+          type: array
+          description: The `tup_` rows created from `pre_tuples`.
+          items: { $ref: '#/components/schemas/Tuple' }
+
+    CreateTupleRequest:
+      type: object
+      required: [subject_type, subject_id, relation, object_type, object_id]
+      additionalProperties: false
+      properties:
+        subject_type:
+          type: string
+          enum: [usr]
+        subject_id:  { $ref: '#/components/schemas/Uuid' }
+        relation:    { $ref: '#/components/schemas/RelationName' }
+        object_type: { $ref: '#/components/schemas/TypePrefix' }
+        object_id:   { $ref: '#/components/schemas/Uuid' }
+
+    CheckRequest:
+      type: object
+      required: [subject_type, subject_id, object_type, object_id]
+      additionalProperties: false
+      description: |
+        Pass EITHER `relation` (single) OR `relations` (non-empty array).
+        Exactly one must be present.
+      properties:
+        subject_type:
+          type: string
+          enum: [usr]
+        subject_id:  { $ref: '#/components/schemas/Uuid' }
+        relation:    { $ref: '#/components/schemas/RelationName' }
+        relations:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/RelationName' }
+        object_type: { $ref: '#/components/schemas/TypePrefix' }
+        object_id:   { $ref: '#/components/schemas/Uuid' }
+
+    CheckResponse:
+      type: object
+      required: [allowed]
+      additionalProperties: false
+      properties:
+        allowed: { type: boolean }
+        matched_tuple_id:
+          description: |
+            The `tup_id` of the tuple that satisfied the check, when
+            `allowed = true`. Implementations MAY return `null` if they
+            do not wish to disclose the matching tuple.
+          oneOf:
+            - $ref: '#/components/schemas/TupId'
+            - type: 'null'
+
+    # ─── Pagination envelopes ───
+
+    PageMeta:
+      type: object
+      required: [next_cursor]
+      additionalProperties: false
+      properties:
+        next_cursor:
+          type: [string, 'null']
+          description: |
+            Cursor for the next page. `null` when there are no further
+            results.
+
+    SessionPage:
+      type: object
+      required: [data, page]
+      additionalProperties: false
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Session' }
+        page: { $ref: '#/components/schemas/PageMeta' }
+
+    MembershipPage:
+      type: object
+      required: [data, page]
+      additionalProperties: false
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Membership' }
+        page: { $ref: '#/components/schemas/PageMeta' }
+
+    InvitationPage:
+      type: object
+      required: [data, page]
+      additionalProperties: false
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Invitation' }
+        page: { $ref: '#/components/schemas/PageMeta' }
+
+    TuplePage:
+      type: object
+      required: [data, page]
+      additionalProperties: false
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Tuple' }
+        page: { $ref: '#/components/schemas/PageMeta' }
