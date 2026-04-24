@@ -1,0 +1,37 @@
+{
+  "$schema": "./index.schema.json",
+  "spec_version": "0.1.0",
+  "description": "Flametrench v0.1 conformance fixture manifest. Harnesses auto-discover fixture files from this index.",
+  "fixtures": [
+    {
+      "path": "fixtures/ids/encode.json",
+      "capability": "ids",
+      "operation": "encode",
+      "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/ids/decode.json",
+      "capability": "ids",
+      "operation": "decode",
+      "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/ids/decode-reject.json",
+      "capability": "ids",
+      "operation": "decode",
+      "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/ids/is-valid.json",
+      "capability": "ids",
+      "operation": "is_valid",
+      "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/ids/type-of.json",
+      "capability": "ids",
+      "operation": "type_of",
+      "conformance_level": "MUST"
+    }
+  ]
+}

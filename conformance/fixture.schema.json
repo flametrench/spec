@@ -1,0 +1,97 @@
+{
+  "$id": "https://flametrench.dev/conformance/fixture.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Flametrench Conformance Fixture",
+  "description": "A single conformance fixture file: one capability, one operation, one or more test vectors.",
+  "type": "object",
+  "required": ["spec_version", "capability", "operation", "conformance_level", "description", "tests"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional pointer to this schema for editor tooling."
+    },
+    "spec_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "The specific Flametrench spec version this fixture file targets."
+    },
+    "capability": {
+      "type": "string",
+      "enum": ["ids", "identity", "tenancy", "authorization"],
+      "description": "Which Flametrench v0.1 capability this fixture exercises."
+    },
+    "operation": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]+$",
+      "description": "Canonical operation name — matches the SDK/API method being validated (e.g. `encode`, `decode`, `check`)."
+    },
+    "conformance_level": {
+      "type": "string",
+      "enum": ["MUST", "SHOULD", "MAY"],
+      "description": "RFC 2119 level. MUST failures prevent an implementation from claiming conformance; SHOULD failures produce warnings; MAY is informational."
+    },
+    "spec_section": {
+      "type": "string",
+      "description": "Path + anchor into the normative spec prose that authorizes this fixture (e.g. `docs/ids.md#decoding-rules`)."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One-line summary of what this fixture file validates."
+    },
+    "tests": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/Test" }
+    }
+  },
+  "$defs": {
+    "Test": {
+      "type": "object",
+      "required": ["id", "description", "input", "expected"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_.-]*$",
+          "description": "Stable identifier for this individual test. Unique within the fixture file. Used for grepping and reporting."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What this specific test validates."
+        },
+        "input": {
+          "type": "object",
+          "description": "The input arguments to the operation. Shape depends on the operation."
+        },
+        "expected": {
+          "$ref": "#/$defs/Expected"
+        }
+      }
+    },
+    "Expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Exactly one of `result` or `error` MUST be present. `result` asserts a successful return value; `error` asserts that the operation throws/raises an error of the named type.",
+      "properties": {
+        "result": {
+          "description": "The expected return value. Shape depends on the operation."
+        },
+        "error": {
+          "type": "string",
+          "description": "The name of the error type the operation MUST throw. Must match one of the spec-defined error names (e.g. `InvalidIdError`, `InvalidTypeError`)."
+        },
+        "error_matches": {
+          "type": "string",
+          "description": "Optional: a substring the error's human-readable message MUST contain. Use sparingly — over-specifying message text makes fixtures fragile across SDKs with different phrasings."
+        }
+      },
+      "oneOf": [
+        { "required": ["result"] },
+        { "required": ["error"] }
+      ]
+    }
+  }
+}

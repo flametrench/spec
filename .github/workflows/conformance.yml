@@ -1,0 +1,61 @@
+name: Conformance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'conformance/**'
+      - '.github/workflows/conformance.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'conformance/**'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-fixtures:
+    name: Validate fixtures against schema
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate index.json against index.schema.json
+        run: |
+          npx -y ajv-cli@5 validate \
+            --strict=false \
+            --spec=draft2020 \
+            -s conformance/index.schema.json \
+            -d conformance/index.json
+
+      - name: Validate every fixture against fixture.schema.json
+        run: |
+          npx -y ajv-cli@5 validate \
+            --strict=false \
+            --spec=draft2020 \
+            -s conformance/fixture.schema.json \
+            -d 'conformance/fixtures/**/*.json'
+
+      - name: Validate index.json fixture paths exist and match their metadata
+        run: node .github/scripts/validate-conformance-index.mjs
+
+  lint-openapi:
+    name: Lint OpenAPI v0.1 draft
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Lint OpenAPI
+        run: |
+          npx -y --package=@redocly/cli@latest redocly lint openapi/flametrench-v0.1.yaml

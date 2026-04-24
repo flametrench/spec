@@ -1,0 +1,53 @@
+{
+  "$id": "https://flametrench.dev/conformance/index.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Flametrench Conformance Index",
+  "description": "Top-level manifest of all conformance fixture files, so harnesses can auto-discover what to run.",
+  "type": "object",
+  "required": ["spec_version", "fixtures"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "spec_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "description": {
+      "type": "string"
+    },
+    "fixtures": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/FixtureEntry" }
+    }
+  },
+  "$defs": {
+    "FixtureEntry": {
+      "type": "object",
+      "required": ["path", "capability", "operation", "conformance_level"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path to the fixture file, relative to this index."
+        },
+        "capability": {
+          "type": "string",
+          "enum": ["ids", "identity", "tenancy", "authorization"]
+        },
+        "operation": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]+$"
+        },
+        "conformance_level": {
+          "type": "string",
+          "enum": ["MUST", "SHOULD", "MAY"]
+        },
+        "runnable_today": {
+          "type": "boolean",
+          "description": "True if any v0.1-compliant SDK can run this fixture. False for fixtures that document future invariants (e.g. tenancy flows before any SDK implements the tenancy layer). Defaults to true when omitted.",
+          "default": true
+        }
+      }
+    }
+  }
+}
