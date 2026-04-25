@@ -26,6 +26,7 @@ ADRs are numbered sequentially from 0001 in the order accepted. Numbers never ch
 | [0005](./0005-revoke-and-re-add.md) | Revoke-and-re-add lifecycle pattern | Cross-cutting `replaces` chain pattern used by `cred_` and `mem_` |
 | [0006](./0006-legacy-password-migration.md) | Legacy password migration: host-side verify-then-rotate | Migration story for bcrypt/PBKDF2/scrypt apps adopting Flametrench |
 | [0007](./0007-authorization-rewrite-rules.md) | Authorization rewrite rules (v0.2 — Proposed) | Subset of Zanzibar userset_rewrite: computed_userset, tuple_to_userset, union |
+| [0008](./0008-mfa.md) | Multi-factor authentication (v0.2 — Proposed) | TOTP (RFC 6238) + WebAuthn assertion verification + recovery codes; new mfa_ entity |
 
 ## Writing a new ADR
 
