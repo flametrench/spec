@@ -2,7 +2,7 @@
   "$id": "https://flametrench.dev/conformance/fixture.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Flametrench Conformance Fixture",
-  "description": "A single conformance fixture file: one capability, one operation, one or more test vectors.",
+  "description": "A single conformance fixture file: one capability, one operation family, one or more test vectors.",
   "type": "object",
   "required": ["spec_version", "capability", "operation", "conformance_level", "description", "tests"],
   "additionalProperties": false,
@@ -24,7 +24,7 @@
     "operation": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9_]+$",
-      "description": "Canonical operation name — matches the SDK/API method being validated (e.g. `encode`, `decode`, `check`)."
+      "description": "Canonical operation name — matches the SDK/API method being validated (e.g. `encode`, `decode`, `check`). For state-machine fixtures, name the primary operation under test (e.g. `self_leave`, `accept_invitation`)."
     },
     "conformance_level": {
       "type": "string",
@@ -49,8 +49,9 @@
   "$defs": {
     "Test": {
       "type": "object",
-      "required": ["id", "description", "input", "expected"],
+      "required": ["id", "description"],
       "additionalProperties": false,
+      "description": "A single test vector. Either single-step (input + expected) or state-machine (users + steps).",
       "properties": {
         "id": {
           "type": "string",
@@ -64,7 +65,51 @@
         },
         "input": {
           "type": "object",
-          "description": "The input arguments to the operation. Shape depends on the operation."
+          "description": "Single-step form: the input arguments to the operation. Shape depends on the operation."
+        },
+        "expected": {
+          "$ref": "#/$defs/Expected",
+          "description": "Single-step form: the expected outcome of the operation."
+        },
+        "users": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "description": "State-machine form: declares named user variables. The harness pre-allocates a fresh `usr_` ID for each name; steps reference them via `{name}`."
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/Step" },
+          "description": "State-machine form: ordered list of operations the harness invokes against a fresh store. Each step's result MAY be captured for later substitution."
+        }
+      },
+      "oneOf": [
+        { "required": ["input", "expected"] },
+        { "required": ["steps"] }
+      ]
+    },
+    "Step": {
+      "type": "object",
+      "required": ["op", "input"],
+      "additionalProperties": false,
+      "description": "One step of a state-machine test. Invokes `op` on the store with `input`. If `expected.error` is present, the step MUST throw the named error and the test ends. Otherwise the step MUST succeed; values from the result MAY be captured by name for later substitution.",
+      "properties": {
+        "op": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]+$",
+          "description": "Operation name, matching the SDK method (e.g. `create_org`, `self_leave`). The harness translates this to the language-idiomatic method name."
+        },
+        "input": {
+          "type": "object",
+          "description": "Operation arguments. String values matching the pattern `{var}` are resolved against the test's variable map (declared users + previous captures) before invocation."
+        },
+        "captures": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Map of capture-name → dotted-path-into-result. After the step succeeds, the harness extracts each value and stores it under the capture name for later substitution. Paths use dot notation: `owner_membership.id`, `invitation.org_id`."
         },
         "expected": {
           "$ref": "#/$defs/Expected"
@@ -81,7 +126,7 @@
         },
         "error": {
           "type": "string",
-          "description": "The name of the error type the operation MUST throw. Must match one of the spec-defined error names (e.g. `InvalidIdError`, `InvalidTypeError`)."
+          "description": "The name of the error type the operation MUST throw. Must match one of the spec-defined error names (e.g. `InvalidIdError`, `SoleOwnerError`)."
         },
         "error_matches": {
           "type": "string",

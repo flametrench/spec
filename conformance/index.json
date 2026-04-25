@@ -62,6 +62,36 @@
       "capability": "authorization",
       "operation": "create_tuple",
       "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/tenancy/self-leave.json",
+      "capability": "tenancy",
+      "operation": "self_leave",
+      "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/tenancy/change-role.json",
+      "capability": "tenancy",
+      "operation": "change_role",
+      "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/tenancy/transfer-ownership.json",
+      "capability": "tenancy",
+      "operation": "transfer_ownership",
+      "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/tenancy/admin-remove.json",
+      "capability": "tenancy",
+      "operation": "admin_remove",
+      "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/tenancy/invitation-accept.json",
+      "capability": "tenancy",
+      "operation": "accept_invitation",
+      "conformance_level": "MUST"
     }
   ]
 }
