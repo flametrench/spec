@@ -151,20 +151,53 @@ CREATE TABLE ses (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     expires_at  TIMESTAMPTZ NOT NULL,
     revoked_at  TIMESTAMPTZ,
+    -- For opaque-token implementations: SHA-256 of the bearer token,
+    -- stored as 32 raw bytes. NULL for JWT-style implementations where
+    -- the token self-verifies. See the comment block below for the
+    -- conformant patterns.
+    token_hash  BYTEA,
 
     CHECK (expires_at > created_at),
-    CHECK (revoked_at IS NULL OR revoked_at >= created_at)
+    CHECK (revoked_at IS NULL OR revoked_at >= created_at),
+    CHECK (token_hash IS NULL OR octet_length(token_hash) = 32)
 );
 
 CREATE INDEX ses_usr_idx    ON ses (usr_id);
 CREATE INDEX ses_active_idx ON ses (usr_id, expires_at)
     WHERE revoked_at IS NULL;
+-- Unique partial index: enforces that no two ACTIVE sessions share a
+-- token hash. Revoked sessions are excluded so the same column may
+-- legitimately hold the historical hash of a rotated token (or NULL,
+-- if the implementation prefers to clear it on revoke).
+CREATE UNIQUE INDEX ses_token_hash_idx ON ses (token_hash)
+    WHERE token_hash IS NOT NULL AND revoked_at IS NULL;
 
--- NOTE on session tokens: the ses.id is the session identifier, not the
--- bearer token. The token carried by the client is opaque to the spec
--- (typically a signed JWT with ses.id as a claim, or an opaque token
--- looked up server-side). Implementations MUST verify token authenticity
--- on each check; the spec does not mandate JWT vs. opaque.
+-- NOTE on session tokens: ses.id is the session identifier, not the
+-- bearer token. The token carried by the client is opaque to the spec.
+-- v0.1 sanctions two implementation patterns:
+--
+--   1. Opaque tokens. The server generates random_bytes(32),
+--      base64url-encodes them, returns to the client, and persists
+--      SHA-256(token) in `ses.token_hash`. On each request the server
+--      computes SHA-256 of the presented token, looks up the row by
+--      token_hash, and constant-time-compares the stored hash. The
+--      reference InMemoryIdentityStore in every SDK uses this pattern.
+--
+--   2. Signed tokens (typically JWT). The token carries ses.id as a
+--      claim and is verified by signature. No server-side lookup of
+--      the token itself is required; revocation works by checking
+--      revoked_at on the session row. `ses.token_hash` stays NULL.
+--
+-- Implementations MUST verify token authenticity on each check.
+-- Implementations using opaque tokens MUST populate ses.token_hash on
+-- session creation. The spec does not mandate either pattern; choose
+-- per the deployment's needs (opaque tokens trade a DB lookup for
+-- simpler revocation semantics; JWT trades signature-verify CPU for
+-- statelessness).
+--
+-- On rotation/revocation: implementations MAY set ses.token_hash to
+-- NULL when revoked_at is set, OR keep the stored hash for forensic
+-- purposes. The unique partial index above accommodates both choices.
 
 -- ===========================================================================
 -- Organizations (org_)
