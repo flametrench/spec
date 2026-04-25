@@ -188,7 +188,132 @@ A session terminates when any of the following occur:
 - `revokeSession(ses_id)`.
 - `listSessions(usr_id) → [session]`.
 
-## Multi-factor authentication (deferred)
+## Migration from legacy password stores
+
+This section is normative. It defines how an application with an existing password store (bcrypt, PBKDF2, scrypt, or any algorithm other than Argon2id at the spec floor) MUST adopt Flametrench without violating the credential-type contract.
+
+Rationale and alternatives considered live in [ADR 0006 — Legacy password migration](../decisions/0006-legacy-password-migration.md).
+
+### What is and is not conformant
+
+A `cred_` row of `type='password'` MUST hold an Argon2id PHC hash meeting the parameters in §"Hashing requirements". This is restated for emphasis: a `cred_` row holding a bcrypt, PBKDF2, scrypt, SHA-2, or any other non-Argon2id payload is **non-conformant**, regardless of how recently the host application started its migration. There is no transitional `Status` value or credential `type` that legitimizes a non-Argon2id hash.
+
+It follows that during a migration, legacy password hashes live **outside** Flametrench's namespace — typically in the host application's pre-existing `users.password_hash` (Laravel), `auth_user.password` (Django), or equivalent column.
+
+### The verify-then-rotate pattern
+
+Conforming implementations MAY adopt the following migration pattern at login time. Hosts SHOULD adopt it; alternatives such as forced password reset are permitted but coarser.
+
+1. The host receives the user's identifier and plaintext password from the login request.
+2. The host calls `verifyPassword(identifier, plaintext)`. If a Flametrench password credential already exists for that identifier (i.e., the user has migrated), this succeeds and the migration is complete for that user.
+3. On `InvalidCredentialError` from step 2, the host falls back to its own legacy verifier — application code calling the legacy library directly — against its existing user-table row.
+4. On legacy-verify success, the host MUST atomically:
+   1. Call `createPasswordCredential(usrId, identifier, plaintext)` on the IdentityStore. This mints a fresh Argon2id `cred_` row at the spec floor.
+   2. Delete (or null) the legacy `password_hash` column on the host's user row.
+
+   Both writes happen in a single database transaction. If either fails, both roll back and the user retries on next login.
+
+5. From this point forward, step 2 succeeds for that user; the legacy path is never re-entered.
+
+After every active user has logged in once — or after a host-defined deadline — the host drops the legacy column. Users who do not log in during the migration window remain on the legacy hash; the host's migration policy (force-reset email, deadline-based account lock, OIDC fallback) is out of scope for this spec.
+
+### Worked example: Laravel + `flametrench/identity`
+
+The example assumes:
+
+- A pre-existing `users` table with a `password_hash` column holding bcrypt strings.
+- A `usr_id` column on the same `users` table linking to a Flametrench `usr_` row that was already imported during initial adoption.
+- The Flametrench identity store wired into the Laravel container.
+
+```php
+<?php
+
+use Flametrench\Identity\IdentityStore;
+use Flametrench\Identity\Exceptions\InvalidCredentialException;
+use Illuminate\Support\Facades\DB;
+
+final class LoginController
+{
+    public function __construct(
+        private readonly IdentityStore $identity,
+    ) {}
+
+    public function __invoke(LoginRequest $request): JsonResponse
+    {
+        $identifier = $request->input('email');
+        $plaintext = $request->input('password');
+
+        // 1. Try the Flametrench credential first. If the user has migrated,
+        // this is the entire login flow.
+        try {
+            $verified = $this->identity->verifyPassword($identifier, $plaintext);
+            return $this->establishSession($verified->usrId, $verified->credId);
+        } catch (InvalidCredentialException) {
+            // Fall through to legacy verification.
+        }
+
+        // 2. Legacy lookup. Application-owned, NOT a Flametrench API.
+        $legacyRow = DB::table('users')
+            ->where('email', $identifier)
+            ->whereNotNull('password_hash')
+            ->first();
+
+        if ($legacyRow === null || !password_verify($plaintext, $legacyRow->password_hash)) {
+            // Same generic error the SDK would have raised. Don't disclose
+            // which arm failed.
+            return response()->json(['error' => 'invalid_credential'], 401);
+        }
+
+        // 3. Atomic rotation: mint the Argon2id cred_, drop the legacy hash.
+        $migratedCred = DB::transaction(function () use ($legacyRow, $identifier, $plaintext) {
+            $cred = $this->identity->createPasswordCredential(
+                usrId: $legacyRow->usr_id,
+                identifier: $identifier,
+                password: $plaintext,
+            );
+            DB::table('users')
+                ->where('id', $legacyRow->id)
+                ->update(['password_hash' => null]);
+            return $cred;
+        });
+
+        // 4. Same session-establishment path the migrated arm took.
+        return $this->establishSession($legacyRow->usr_id, $migratedCred->id);
+    }
+
+    private function establishSession(string $usrId, string $credId): JsonResponse
+    {
+        $sessionWithToken = $this->identity->createSession($usrId, $credId, ttlSeconds: 3600);
+        return response()->json([
+            'token' => $sessionWithToken->token,
+            'expires_at' => $sessionWithToken->session->expiresAt->format(DATE_RFC3339),
+        ]);
+    }
+}
+```
+
+The same pattern applies to other host languages and frameworks; the key invariants are:
+
+- The legacy verifier call (`password_verify` here) is host code, not an SDK call.
+- The legacy fallback runs ONLY on `InvalidCredentialException` from `verifyPassword`, never preemptively.
+- The credential mint and the legacy-column delete are in one transaction.
+- After rotation, the legacy verifier is unreachable for that user; the SDK's `verifyPassword` is the single source of truth.
+
+### Bulk migration is out of scope for v0.1
+
+The spec deliberately does not define a one-shot bulk re-hash tool, because plaintext is unrecoverable and any "bulk migrate" path requires either forcing all users to reset their passwords or keeping legacy verifiers permanently. Hosts choose their policy.
+
+### What the SDK will and will not do for migrations
+
+In v0.1, Flametrench SDKs MUST NOT:
+
+- Ship a built-in bcrypt, PBKDF2, scrypt, or any non-Argon2id verifier.
+- Expose a hook that lets `verifyPassword` consult host-provided legacy verifiers automatically.
+- Accept a non-Argon2id PHC string into `createPasswordCredential` even with explicit override flags.
+
+A pluggable `LegacyPasswordVerifier` interface MAY be introduced in v0.2+ if multiple adopters request it with consistent requirements. Hosts adopting v0.1 today are not blocked by its absence; the verify-then-rotate pattern above is correct and complete.
+
+
 
 Flametrench v0.1 does NOT specify MFA. See [ADR 0004](../decisions/0004-identity-model.md) for rationale.
 

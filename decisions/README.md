@@ -23,6 +23,7 @@ ADRs are numbered sequentially from 0001 in the order accepted. Numbers never ch
 | [0003](./0003-invitation-state-machine.md) | Invitation state machine | Invitation lifecycle; pre-declared tuples; atomic acceptance |
 | [0004](./0004-identity-model.md) | Identity model: opaque users, layered credentials | Users; credential types; Argon2id pinning; sessions; MFA deferral |
 | [0005](./0005-revoke-and-re-add.md) | Revoke-and-re-add lifecycle pattern | Cross-cutting `replaces` chain pattern used by `cred_` and `mem_` |
+| [0006](./0006-legacy-password-migration.md) | Legacy password migration: host-side verify-then-rotate | Migration story for bcrypt/PBKDF2/scrypt apps adopting Flametrench |
 
 ## Writing a new ADR
 
