@@ -1,15 +1,36 @@
-# Authorization fixtures (placeholder for v0.1.0)
+# Authorization fixtures
 
-Authorization fixtures need a tuple store to seed before a `check()` can be meaningful. No Flametrench SDK has published the authorization layer yet; fixtures are deferred until that work lands.
+Conformance fixtures for the authorization capability (`docs/authorization.md`). Every test embeds a `given_tuples[]` precondition array — the tuple store the SDK should be in before applying the operation under test. Harnesses MUST seed those tuples before running the assertion.
 
-When the first authz SDK lands, the following fixtures will be added here:
+## v0.1 — runnable today
 
-- **`check-exact-match.json`** — given `tup_(alice, editor, project_42)` and no other tuples for that subject/object pair, `check(alice, editor, project_42)` MUST return `true`; `check(alice, viewer, project_42)` MUST return `false`.
-- **`check-set-form.json`** — given the same tuple, `check(alice, [viewer, editor], project_42)` MUST return `true`. The empty set MUST produce a validation error, not silently return `false`.
-- **`check-no-derivation.json`** — given `tup_(alice, admin, org_acme)` as the only tuple, `check(alice, editor, org_acme)` MUST return `false`. v0.1 does NOT imply `editor` from `admin`. This fixture exists specifically to catch SDKs that accidentally introduce derivation.
-- **`uniqueness.json`** — attempting to create two tuples with identical `(subject_type, subject_id, relation, object_type, object_id)` natural keys MUST either reject the second call with an error OR be idempotent (returning the existing tuple's id). Implementations MUST NOT persist duplicate rows.
-- **`cascade-on-subject-revoke.json`** — given N tuples with the same subject, `cascadeRevokeSubject(subject)` MUST delete all N in one transaction.
-- **`enumeration-pagination.json`** — `listTuplesByObject` with a small `limit` MUST return a cursor; following the cursor MUST yield the remaining results in UUIDv7-sorted order with no duplicates or skips.
-- **`invalid-subject-id-rejected.json`** — a `createTuple` call with `subject_id = "ffffffff-ffff-ffff-ffff-ffffffffffff"` (Max UUID) MUST fail per `docs/ids.md` rule 5; the fixture enforces that authz doesn't bypass ID validation.
+| File                | Operation       | Tests | What it locks down |
+| ------------------- | --------------- | ----: | ------------------ |
+| `check.json`        | `check`         |     8 | Exact-match semantics — and explicit `no-derivation` cases (admin ≠ editor, editor ≠ viewer, org membership ≠ project access). v0.1 has no role implication or parent-child inheritance; this fixture catches any SDK that accidentally adds it. |
+| `check-any.json`    | `check_any`     |     4 | Set-form `check` returns true if ANY supplied relation matches; empty relations array MUST raise `EmptyRelationSetError` rather than silently returning false. |
+| `uniqueness.json`   | `create_tuple`  |     2 | The 5-key natural key `(subject_type, subject_id, relation, object_type, object_id)` is unique. Duplicate creation raises `DuplicateTupleError`; tuples differing only in relation may coexist. |
+| `format.json`       | `create_tuple`  |     5 | Relation regex `^[a-z_]{2,32}$` and object-type regex `^[a-z]{2,6}$` enforced at create time. Violations raise `InvalidFormatError`; underscores in custom relations are accepted. |
 
-See `spec/docs/authorization.md` for the normative behavior the fixtures will exercise.
+## v0.1 — deferred
+
+These will land alongside the SDK features they exercise. Stub them out as `runnable_today: false` in `conformance/index.json` if you add them before the SDK code:
+
+- **`cascade-on-subject-revoke.json`** — `cascadeRevokeSubject(subject)` deletes all tuples for the subject in one transaction. Requires the bulk-revoke API.
+- **`enumeration-pagination.json`** — `listTuplesByObject` cursor pagination. Requires the enumeration API and stable UUIDv7 sort.
+- **`invalid-subject-id-rejected.json`** — `createTuple` rejects `subject_id = Max UUID` per `docs/ids.md` rule 5. Cross-cuts ID validation; landing this requires the authz layer to call into the ID validator.
+
+## Fixture format
+
+Inputs are operation-shaped:
+
+```jsonc
+{
+  "given_tuples": [{ /* 5-key tuple */ }],   // store state before the op
+  "create": { /* tuple to create */ },        // for create_tuple ops
+  "check":  { /* check input */ }             // for check / check_any ops
+}
+```
+
+Outputs are either `{ "result": ... }` for the happy path or `{ "error": "ErrorName" }` for the failure path. Errors are spec error names; SDKs map them to language-native types.
+
+See `spec/docs/authorization.md` for the normative behavior these fixtures exercise.

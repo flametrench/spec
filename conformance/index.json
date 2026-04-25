@@ -32,6 +32,36 @@
       "capability": "ids",
       "operation": "type_of",
       "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/identity/argon2id.json",
+      "capability": "identity",
+      "operation": "verify_password",
+      "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/authorization/check.json",
+      "capability": "authorization",
+      "operation": "check",
+      "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/authorization/check-any.json",
+      "capability": "authorization",
+      "operation": "check_any",
+      "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/authorization/uniqueness.json",
+      "capability": "authorization",
+      "operation": "create_tuple",
+      "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/authorization/format.json",
+      "capability": "authorization",
+      "operation": "create_tuple",
+      "conformance_level": "MUST"
     }
   ]
 }
