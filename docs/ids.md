@@ -119,6 +119,40 @@ An implementation's `generate(type)` function:
 
 Generated identifiers are sortable by creation time by virtue of UUIDv7's structure. Implementations MAY rely on this for ordering in lists, but applications that require strict time ordering across a distributed system SHOULD use explicit timestamp columns in addition to IDs.
 
+## Wire format vs registered types
+
+The Flametrench wire format (`{prefix}_{32-hex-of-uuidv7}`) is structurally well-defined independent of the registered-type list. The registered-type list is normative for **Flametrench-managed entities** — `usr_`, `org_`, `mem_`, `inv_`, `ses_`, `cred_`, `tup_`. An application MAY choose to use the same wire-format shape for its own object types when writing authorization tuples. For example, an app modeling projects, documents, and teams MAY use `proj_<hex>`, `doc_<hex>`, and `team_<hex>` as `object_id` values in `tup_` rows, with `object_type` set to `"proj"`, `"doc"`, `"team"` respectively.
+
+This is a host choice, not a spec requirement. The authorization layer treats `object_id` as an opaque application-chosen string keyed by `object_type` (subject to the format rule on `object_type` itself, which is `^[a-z]{2,6}$`). Applications MAY use bare UUIDs, integers serialized as strings, slugs, or any other identifier shape they prefer.
+
+### The `decodeAny` adapter helper
+
+Implementations MUST provide a second decoder, `decodeAny(id)`, alongside the strict `decode(id)`:
+
+1. MUST follow steps 1, 3, 4, and 5 of the `decode(id)` rules above (separator presence, payload format, canonical reconstruction, version nibble).
+2. MUST NOT consult the registered-type set. Step 2 of `decode(id)` is omitted.
+3. MUST raise `InvalidIdError` on any structural failure. Never raises `InvalidTypeError`.
+4. MUST return the same structured `(type, uuid)` shape as `decode(id)`.
+
+A predicate counterpart, `isValidShape(id)`, MUST also be provided. Its semantics mirror `isValid(id)` except that registry membership is not checked: any well-formed wire-format string returns true.
+
+These helpers exist for two host scenarios:
+
+- **Backend storage adapters** (Postgres, Redis, etc.) that need to convert wire-format object IDs back to canonical UUIDs without knowing in advance which application types are in use. Adapter code calls `decodeAny` on `object_id` values; it cannot use the strict `decode` because application-defined types are not in the registry.
+- **Generic introspection** of unknown wire-format IDs surfaced via logs, support tickets, or external integrations.
+
+`decodeAny` is **not a relaxation of the registered-type contract.** Code paths that operate on Flametrench-managed entities (`usr_`, `org_`, etc.) MUST continue to use `decode` so that an unregistered prefix is caught immediately. Use `decodeAny` only when the calling context is known to legitimately accept application-defined types.
+
+### What `decodeAny` does NOT do
+
+- It does NOT register new types. The registry remains spec-controlled and immutable at runtime.
+- It does NOT validate that an `object_type` matches the format rule from the authorization layer (`^[a-z]{2,6}$`). That validation happens at tuple creation, not at ID decode.
+- It does NOT guarantee that the prefix has a meaning. `decodeAny("xyz_0190f2a8...")` returns `(type: "xyz", uuid: "...")` even if `xyz` has no registered or application-defined meaning. The caller is responsible for interpreting the prefix in context.
+
+### Conformance status
+
+`decodeAny` and `isValidShape` are SHOULD-implement helpers across all SDKs. They are not part of the cross-SDK fixture corpus because there is no observable wire behavior to test — the helpers are pure functions of input format. SDKs SHOULD use the names `decodeAny` and `isValidShape` (or the language-idiomatic equivalent) for adapter-author ergonomics across languages.
+
 ## Conformance fixtures
 
 The following fixtures are part of the conformance suite. Every SDK MUST produce byte-identical encodings for these inputs:
