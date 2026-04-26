@@ -72,13 +72,14 @@ Implementations MUST NOT invent new type prefixes. New prefixes are added by ame
 
 Reserved prefixes for future capabilities (not usable in v0.1 implementations):
 
-| Prefix  | Planned resource        | Capability      |
-| ------- | ----------------------- | --------------- |
-| `aud`   | Audit event             | Audit (v0.2)    |
-| `not`   | Notification            | Notifications   |
-| `file`  | File                    | Files           |
-| `flag`  | Feature flag            | Feature flags   |
-| `sub`   | Subscription            | Billing         |
+| Prefix  | Planned resource        | Capability      | Status        |
+| ------- | ----------------------- | --------------- | ------------- |
+| `mfa`   | Multi-factor factor     | Identity (v0.2) | Proposed (ADR 0008) |
+| `aud`   | Audit event             | Audit           | Reserved      |
+| `not`   | Notification            | Notifications   | Reserved      |
+| `file`  | File                    | Files           | Reserved      |
+| `flag`  | Feature flag            | Feature flags   | Reserved      |
+| `sub`   | Subscription            | Billing         | Reserved      |
 
 Prefix selection rules for future additions:
 

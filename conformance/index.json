@@ -110,6 +110,18 @@
       "capability": "authorization",
       "operation": "check",
       "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/identity/mfa/totp-rfc6238.json",
+      "capability": "identity",
+      "operation": "totp_compute",
+      "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/identity/mfa/recovery-code-format.json",
+      "capability": "identity",
+      "operation": "generate_recovery_code",
+      "conformance_level": "MUST"
     }
   ]
 }
