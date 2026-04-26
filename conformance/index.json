@@ -122,6 +122,18 @@
       "capability": "identity",
       "operation": "generate_recovery_code",
       "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/identity/mfa/webauthn-assertion.json",
+      "capability": "identity",
+      "operation": "webauthn_verify_assertion",
+      "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/identity/mfa/webauthn-counter-decrease-rejected.json",
+      "capability": "identity",
+      "operation": "webauthn_verify_assertion",
+      "conformance_level": "MUST"
     }
   ]
 }

@@ -1,0 +1,388 @@
+#!/usr/bin/env python3
+# Copyright 2026 NDC Digital, LLC
+# SPDX-License-Identifier: Apache-2.0
+
+"""Generate WebAuthn assertion conformance fixtures.
+
+Run this once to populate
+  conformance/fixtures/identity/mfa/webauthn-assertion.json
+  conformance/fixtures/identity/mfa/webauthn-counter-decrease-rejected.json
+
+The fixtures pin a deterministic ES256 keypair (private scalar fixed at
+the constant below) and a synthesized assertion produced from that key.
+ECDSA signatures are NON-deterministic by default — once generated the
+fixture is committed and SDKs verify against the pinned bytes; this
+script does not need to reproduce them byte-for-byte on a re-run.
+
+Why ES256: every FIDO2 / WebAuthn platform authenticator (Touch ID,
+Windows Hello, Android, every major hardware key) supports ES256. RS256
+and EdDSA are deferred to a v0.3 fixture set.
+"""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+import struct
+from pathlib import Path
+
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import ec
+
+# ─── Pinned-keypair constants ───────────────────────────────────
+
+# Fixed scalar so the public key is deterministic across regenerations.
+# Value chosen arbitrarily; not security-sensitive — these fixtures are
+# test data only, never used in production.
+PRIVATE_SCALAR = int(
+    "C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721", 16
+)
+
+RP_ID = "flametrench.test"
+ORIGIN = "https://flametrench.test"
+CHALLENGE = b"flametrench-webauthn-challenge-v0.2"  # raw bytes
+CREDENTIAL_ID = b"\x01" * 16  # opaque, not parsed by verify
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+FIXTURE_DIR = REPO_ROOT / "conformance" / "fixtures" / "identity" / "mfa"
+
+
+# ─── Helpers ────────────────────────────────────────────────────
+
+
+def b64url(buf: bytes) -> str:
+    return base64.urlsafe_b64encode(buf).rstrip(b"=").decode("ascii")
+
+
+def cose_es256_key(x: bytes, y: bytes) -> bytes:
+    return (
+        b"\xa5"
+        + b"\x01\x02"
+        + b"\x03\x26"
+        + b"\x20\x01"
+        + b"\x21\x58\x20" + x
+        + b"\x22\x58\x20" + y
+    )
+
+
+def make_authenticator_data(rp_id: str, flags: int, sign_count: int) -> bytes:
+    rp_hash = hashlib.sha256(rp_id.encode("utf-8")).digest()
+    return rp_hash + bytes([flags]) + struct.pack(">I", sign_count)
+
+
+def make_client_data_json(challenge: bytes, origin: str, type_: str = "webauthn.get") -> bytes:
+    payload = {"type": type_, "challenge": b64url(challenge), "origin": origin}
+    # Sort keys for byte-stability.
+    return json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+
+
+# ─── Fixture builders ───────────────────────────────────────────
+
+
+def main() -> None:
+    private_key = ec.derive_private_key(PRIVATE_SCALAR, ec.SECP256R1())
+    pub = private_key.public_key().public_numbers()
+    x = pub.x.to_bytes(32, "big")
+    y = pub.y.to_bytes(32, "big")
+    cose_pub = cose_es256_key(x, y)
+
+    # ── Fixture 1: webauthn-assertion.json ──
+    # Six tests: one happy path + five negative cases varying ONE input.
+    happy_flags = 0x05  # UP=1, UV=1
+    happy_sign_count_new = 5
+    happy_sign_count_stored = 0
+
+    happy_auth = make_authenticator_data(RP_ID, happy_flags, happy_sign_count_new)
+    happy_client = make_client_data_json(CHALLENGE, ORIGIN)
+    happy_signed = happy_auth + hashlib.sha256(happy_client).digest()
+    happy_sig = private_key.sign(happy_signed, ec.ECDSA(hashes.SHA256()))
+
+    # Negative: wrong RP ID
+    bad_rp_auth = make_authenticator_data("evil.test", happy_flags, happy_sign_count_new)
+    bad_rp_signed = bad_rp_auth + hashlib.sha256(happy_client).digest()
+    bad_rp_sig = private_key.sign(bad_rp_signed, ec.ECDSA(hashes.SHA256()))
+
+    # Negative: UV flag missing (UP only)
+    no_uv_flags = 0x01
+    no_uv_auth = make_authenticator_data(RP_ID, no_uv_flags, happy_sign_count_new)
+    no_uv_signed = no_uv_auth + hashlib.sha256(happy_client).digest()
+    no_uv_sig = private_key.sign(no_uv_signed, ec.ECDSA(hashes.SHA256()))
+
+    # Negative: wrong origin
+    wrong_origin_client = make_client_data_json(CHALLENGE, "https://attacker.test")
+    wrong_origin_signed = happy_auth + hashlib.sha256(wrong_origin_client).digest()
+    wrong_origin_sig = private_key.sign(wrong_origin_signed, ec.ECDSA(hashes.SHA256()))
+
+    # Negative: wrong challenge
+    wrong_challenge_client = make_client_data_json(b"different-challenge", ORIGIN)
+    wrong_challenge_signed = happy_auth + hashlib.sha256(wrong_challenge_client).digest()
+    wrong_challenge_sig = private_key.sign(wrong_challenge_signed, ec.ECDSA(hashes.SHA256()))
+
+    # Negative: signature tampered (flip last byte). The auth data and
+    # client data are well-formed, but the signature won't verify.
+    tampered_sig = bytearray(happy_sig)
+    tampered_sig[-1] ^= 0x01
+    tampered_sig = bytes(tampered_sig)
+
+    # Negative: type != "webauthn.get"
+    wrong_type_client = make_client_data_json(CHALLENGE, ORIGIN, type_="webauthn.create")
+    wrong_type_signed = happy_auth + hashlib.sha256(wrong_type_client).digest()
+    wrong_type_sig = private_key.sign(wrong_type_signed, ec.ECDSA(hashes.SHA256()))
+
+    assertion_fixture = {
+        "$schema": "../../../fixture.schema.json",
+        "spec_version": "0.2.0",
+        "capability": "identity",
+        "operation": "webauthn_verify_assertion",
+        "conformance_level": "MUST",
+        "spec_section": "decisions/0008-mfa.md",
+        "description": (
+            "WebAuthn assertion verification. Every conforming Flametrench "
+            "identity SDK MUST accept the happy-path assertion and reject "
+            "each negative case. The keypair is pinned; the signature was "
+            "produced by a Python reference run and is byte-stable in the "
+            "fixture. Bytes are hex-encoded. Signatures are DER-encoded "
+            "ECDSA per WebAuthn §6.5.6 for ES256."
+        ),
+        "shared": {
+            "cose_public_key_hex": cose_pub.hex(),
+            "stored_rp_id": RP_ID,
+            "expected_origin": ORIGIN,
+            "expected_challenge_hex": CHALLENGE.hex(),
+            "stored_sign_count": happy_sign_count_stored,
+        },
+        "tests": [
+            {
+                "id": "webauthn.assertion.valid",
+                "description": (
+                    "Well-formed ES256 assertion with UP+UV set, advancing "
+                    "counter, matching RP ID/origin/challenge MUST verify. "
+                    "Returns the new sign count."
+                ),
+                "input": {
+                    "authenticator_data_hex": happy_auth.hex(),
+                    "client_data_json_hex": happy_client.hex(),
+                    "signature_hex": happy_sig.hex(),
+                    "require_user_verified": True,
+                    "require_user_present": True,
+                },
+                "expected": {"result": {"ok": True, "new_sign_count": happy_sign_count_new}},
+            },
+            {
+                "id": "webauthn.assertion.rp_id_mismatch",
+                "description": (
+                    "Assertion from an authenticator whose authenticatorData "
+                    "carries a different RP-ID hash MUST be rejected even if "
+                    "the signature itself verifies."
+                ),
+                "input": {
+                    "authenticator_data_hex": bad_rp_auth.hex(),
+                    "client_data_json_hex": happy_client.hex(),
+                    "signature_hex": bad_rp_sig.hex(),
+                    "require_user_verified": True,
+                    "require_user_present": True,
+                },
+                "expected": {"result": {"ok": False, "reason": "rp_id_mismatch"}},
+            },
+            {
+                "id": "webauthn.assertion.user_not_verified",
+                "description": (
+                    "Assertion missing the UV bit MUST be rejected when the "
+                    "verifier requires user verification (the v0.2 default)."
+                ),
+                "input": {
+                    "authenticator_data_hex": no_uv_auth.hex(),
+                    "client_data_json_hex": happy_client.hex(),
+                    "signature_hex": no_uv_sig.hex(),
+                    "require_user_verified": True,
+                    "require_user_present": True,
+                },
+                "expected": {"result": {"ok": False, "reason": "user_not_verified"}},
+            },
+            {
+                "id": "webauthn.assertion.origin_mismatch",
+                "description": (
+                    "Assertion whose clientDataJSON.origin does not match the "
+                    "expected origin MUST be rejected — this catches phishing "
+                    "where the user followed a typo'd link."
+                ),
+                "input": {
+                    "authenticator_data_hex": happy_auth.hex(),
+                    "client_data_json_hex": wrong_origin_client.hex(),
+                    "signature_hex": wrong_origin_sig.hex(),
+                    "require_user_verified": True,
+                    "require_user_present": True,
+                },
+                "expected": {"result": {"ok": False, "reason": "origin_mismatch"}},
+            },
+            {
+                "id": "webauthn.assertion.challenge_mismatch",
+                "description": (
+                    "Assertion whose clientDataJSON.challenge does not match "
+                    "the issued challenge MUST be rejected — replay protection."
+                ),
+                "input": {
+                    "authenticator_data_hex": happy_auth.hex(),
+                    "client_data_json_hex": wrong_challenge_client.hex(),
+                    "signature_hex": wrong_challenge_sig.hex(),
+                    "require_user_verified": True,
+                    "require_user_present": True,
+                },
+                "expected": {"result": {"ok": False, "reason": "challenge_mismatch"}},
+            },
+            {
+                "id": "webauthn.assertion.signature_invalid",
+                "description": (
+                    "Tampered signature (single byte flipped) MUST be rejected."
+                ),
+                "input": {
+                    "authenticator_data_hex": happy_auth.hex(),
+                    "client_data_json_hex": happy_client.hex(),
+                    "signature_hex": tampered_sig.hex(),
+                    "require_user_verified": True,
+                    "require_user_present": True,
+                },
+                "expected": {"result": {"ok": False, "reason": "signature_invalid"}},
+            },
+            {
+                "id": "webauthn.assertion.type_mismatch",
+                "description": (
+                    "clientDataJSON.type other than 'webauthn.get' MUST be "
+                    "rejected (this prevents reusing a registration "
+                    "clientDataJSON as an assertion)."
+                ),
+                "input": {
+                    "authenticator_data_hex": happy_auth.hex(),
+                    "client_data_json_hex": wrong_type_client.hex(),
+                    "signature_hex": wrong_type_sig.hex(),
+                    "require_user_verified": True,
+                    "require_user_present": True,
+                },
+                "expected": {"result": {"ok": False, "reason": "type_mismatch"}},
+            },
+        ],
+    }
+
+    # ── Fixture 2: webauthn-counter-decrease-rejected.json ──
+    # Stored counter = 10. Test: incoming counter <= 10 (with at least one
+    # side non-zero) MUST be rejected as cloned-authenticator signal.
+    stored_counter_clone = 10
+
+    # Equal counter (both non-zero) -- rejected.
+    eq_auth = make_authenticator_data(RP_ID, happy_flags, 10)
+    eq_client = make_client_data_json(CHALLENGE, ORIGIN)
+    eq_signed = eq_auth + hashlib.sha256(eq_client).digest()
+    eq_sig = private_key.sign(eq_signed, ec.ECDSA(hashes.SHA256()))
+
+    # Lesser counter -- rejected.
+    less_auth = make_authenticator_data(RP_ID, happy_flags, 7)
+    less_signed = less_auth + hashlib.sha256(eq_client).digest()
+    less_sig = private_key.sign(less_signed, ec.ECDSA(hashes.SHA256()))
+
+    # Greater counter -- accepted.
+    greater_auth = make_authenticator_data(RP_ID, happy_flags, 11)
+    greater_signed = greater_auth + hashlib.sha256(eq_client).digest()
+    greater_sig = private_key.sign(greater_signed, ec.ECDSA(hashes.SHA256()))
+
+    # Both zero -- accepted (authenticator does not track counter).
+    zero_auth = make_authenticator_data(RP_ID, happy_flags, 0)
+    zero_signed = zero_auth + hashlib.sha256(eq_client).digest()
+    zero_sig = private_key.sign(zero_signed, ec.ECDSA(hashes.SHA256()))
+
+    counter_fixture = {
+        "$schema": "../../../fixture.schema.json",
+        "spec_version": "0.2.0",
+        "capability": "identity",
+        "operation": "webauthn_verify_assertion",
+        "conformance_level": "MUST",
+        "spec_section": "decisions/0008-mfa.md",
+        "description": (
+            "WebAuthn signature-counter monotonicity per spec §6.1.1. A "
+            "counter that fails to strictly advance — when at least one of "
+            "stored/incoming is non-zero — is the cloned-authenticator "
+            "signal and MUST be rejected. The both-zero case is permitted "
+            "(some authenticators do not track a counter)."
+        ),
+        "shared": {
+            "cose_public_key_hex": cose_pub.hex(),
+            "stored_rp_id": RP_ID,
+            "expected_origin": ORIGIN,
+            "expected_challenge_hex": CHALLENGE.hex(),
+            "client_data_json_hex": eq_client.hex(),
+        },
+        "tests": [
+            {
+                "id": "webauthn.counter.equal_rejected",
+                "description": (
+                    "Stored=10, incoming=10. Equal counters with non-zero "
+                    "values MUST be rejected — the spec treats equality as "
+                    "a cloned-authenticator signal."
+                ),
+                "input": {
+                    "stored_sign_count": stored_counter_clone,
+                    "authenticator_data_hex": eq_auth.hex(),
+                    "signature_hex": eq_sig.hex(),
+                },
+                "expected": {"result": {"ok": False, "reason": "counter_regression"}},
+            },
+            {
+                "id": "webauthn.counter.lesser_rejected",
+                "description": (
+                    "Stored=10, incoming=7. A counter that decreases is the "
+                    "clearest cloned-authenticator signal."
+                ),
+                "input": {
+                    "stored_sign_count": stored_counter_clone,
+                    "authenticator_data_hex": less_auth.hex(),
+                    "signature_hex": less_sig.hex(),
+                },
+                "expected": {"result": {"ok": False, "reason": "counter_regression"}},
+            },
+            {
+                "id": "webauthn.counter.greater_accepted",
+                "description": (
+                    "Stored=10, incoming=11. A strictly-greater counter is "
+                    "the normal path; verifier returns the new sign count."
+                ),
+                "input": {
+                    "stored_sign_count": stored_counter_clone,
+                    "authenticator_data_hex": greater_auth.hex(),
+                    "signature_hex": greater_sig.hex(),
+                },
+                "expected": {"result": {"ok": True, "new_sign_count": 11}},
+            },
+            {
+                "id": "webauthn.counter.both_zero_accepted",
+                "description": (
+                    "Stored=0, incoming=0. Authenticators that do not "
+                    "support a counter signal both as zero; spec permits "
+                    "this case."
+                ),
+                "input": {
+                    "stored_sign_count": 0,
+                    "authenticator_data_hex": zero_auth.hex(),
+                    "signature_hex": zero_sig.hex(),
+                },
+                "expected": {"result": {"ok": True, "new_sign_count": 0}},
+            },
+        ],
+    }
+
+    FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
+    write_fixture(FIXTURE_DIR / "webauthn-assertion.json", assertion_fixture)
+    write_fixture(
+        FIXTURE_DIR / "webauthn-counter-decrease-rejected.json", counter_fixture
+    )
+
+    print(f"Wrote {FIXTURE_DIR}/webauthn-assertion.json")
+    print(f"Wrote {FIXTURE_DIR}/webauthn-counter-decrease-rejected.json")
+
+
+def write_fixture(path: Path, fixture: dict) -> None:
+    text = json.dumps(fixture, indent=2) + "\n"
+    path.write_text(text)
+
+
+if __name__ == "__main__":
+    main()

@@ -44,6 +44,10 @@
       "type": "array",
       "minItems": 1,
       "items": { "$ref": "#/$defs/Test" }
+    },
+    "shared": {
+      "type": "object",
+      "description": "v0.2 only: optional fixture-level inputs that every test in the file shares. Harnesses MUST merge these into each test's input map before invocation. Useful for fixtures where 90% of input is constant (e.g. WebAuthn assertion keypair + RP ID) and only a few fields vary across tests."
     }
   },
   "$defs": {
