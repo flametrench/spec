@@ -313,7 +313,7 @@ In v0.1, Flametrench SDKs MUST NOT:
 
 A pluggable `LegacyPasswordVerifier` interface MAY be introduced in v0.2+ if multiple adopters request it with consistent requirements. Hosts adopting v0.1 today are not blocked by its absence; the verify-then-rotate pattern above is correct and complete.
 
-
+## Multi-factor authentication (v0.1 deferred; v0.2 brings it in)
 
 Flametrench v0.1 does NOT specify MFA. See [ADR 0004](../decisions/0004-identity-model.md) for rationale.
 
@@ -323,7 +323,86 @@ Applications that need MFA in v0.1 can layer it on:
 - Require verification of a second credential before calling `createSession`.
 - The resulting session's `cred_id` records the primary credential that established it.
 
-v0.2 will introduce first-class MFA with credential chains, grace windows, and recovery codes.
+v0.2 introduces first-class MFA per [ADR 0008](../decisions/0008-mfa.md) — preview below.
+
+## Multi-factor authentication (v0.2 — Proposed)
+
+This section is a preview of v0.2 functionality and is **non-normative until v0.2 is released**. The design is locked in [ADR 0008](../decisions/0008-mfa.md); SDK implementations follow the v0.2 release tag.
+
+### Three first-class factor types
+
+- **TOTP** ([RFC 6238](https://datatracker.ietf.org/doc/html/rfc6238)). 30-second window, 6-digit codes, HMAC-SHA1 default with HMAC-SHA256 permitted. The widest baseline; works with every authenticator app.
+- **WebAuthn assertion verification** — full FIDO2 / passkey assertion. v0.1 stored passkey *credentials* but punted assertion verification to the host application; v0.2 owns it end-to-end including signature counter monotonicity, RP ID validation, and the user-verified flag.
+- **Recovery codes** — 10 single-use codes, generated at enrollment, stored only as Argon2id hashes server-side. The fallback when a user loses their primary factor.
+
+Explicitly deferred to v0.3+: SMS (carrier insecurity; PCI DSS 4.0 deprecation), email magic-link as a daily-driver factor (mailbox compromise = account compromise), and OATH-direct hardware token enrollment outside WebAuthn.
+
+### Factors are not credentials
+
+A user has N credentials AND N factors. They are distinct entities because:
+
+1. A passkey can be either a primary credential (replaces password) or a factor (supplements password). Encoding both roles in one entity creates type-system contortions.
+2. Factors have their own lifecycle independent of credentials.
+3. Recovery codes are not credentials; they exist only to bypass the requirement to present another factor.
+
+A factor is stored in a new `mfa_` entity:
+
+```
+mfa_<hex>
+  - id: mfa_<32hex>
+  - usr_id: ref usr_
+  - type: 'totp' | 'webauthn' | 'recovery'
+  - status: 'active' | 'suspended' | 'revoked'
+  - identifier: type-specific (label for totp; credential id for webauthn; null for recovery)
+  - replaces: nullable mfa_id (for re-enrollment chain)
+  - created_at, updated_at
+  - <type-specific payload, internal only>
+```
+
+Revoke-and-re-add ([ADR 0005](../decisions/0005-revoke-and-re-add.md)) applies to factor rotation identically to credential rotation.
+
+### The auth flow
+
+```
+verifyPassword → verifyMfa → createSession
+```
+
+Three steps the application sequences. `verifyPassword` is unchanged from v0.1 — the v0.2 change is purely additive: it gains a "MFA required" structured signal when `usr_mfa_policy.required = true` for that user, instead of returning the verified credential directly. Apps that have no users with required MFA see no behavioral change.
+
+### Enrollment with two-step confirmation
+
+`enrollMfa(usrId, type, ...args)` returns the factor in `status: pending`. The factor only flips to `active` after `confirmEnrollment(mfaId, code)` validates a fresh code (TOTP) or attestation (WebAuthn). Recovery codes have no confirmation step — they're useful immediately.
+
+The pending → active transition prevents the "user enrolls a factor, locks themselves out before testing it" failure mode. Pending factors expire after 10 minutes if not confirmed.
+
+### Sessions and MFA freshness
+
+Sessions gain an optional `mfa_verified_at` timestamp. Apps gate sensitive operations on freshness:
+
+```
+session.mfa_verified_at IS NOT NULL
+  AND now() - session.mfa_verified_at < <step-up-window>
+```
+
+Spec floor: 30 minutes. `refreshSession` does NOT carry `mfa_verified_at` forward — refresh-then-step-up is the right shape; MFA freshness MUST NOT be amortizable across refreshes.
+
+### Per-user policy
+
+```
+usr_mfa_policy
+  - usr_id: ref usr_ (PK)
+  - required: boolean
+  - grace_until: nullable timestamptz
+  - updated_at
+```
+
+When `required = true` and `grace_until` is null or past, `verifyPassword` produces the MFA-required signal. The application then chains into `verifyMfa` before `createSession`. Org-level "all members must enable MFA" enforcement is application code on top of `usr_mfa_policy`; the spec does not extend the org schema for this.
+
+### Cross-SDK parity contract
+
+A `fixtures/identity/mfa/` corpus will land alongside the v0.2 SDK ports, anchored on RFC 6238 test vectors for TOTP. The TOTP fixture makes Flametrench's implementation byte-identical to every other RFC-conformant TOTP implementation, not just to itself across SDKs. WebAuthn fixtures use synthetic assertions against known public keys; recovery-code fixtures cover format and consumption semantics.
+
+See [ADR 0008](../decisions/0008-mfa.md) for the full design rationale, alternatives considered, and explicit deferrals.
 
 ## Conformance fixtures
 
