@@ -140,6 +140,12 @@
       "capability": "identity",
       "operation": "webauthn_verify_assertion",
       "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/identity/mfa/webauthn-assertion-algorithms.json",
+      "capability": "identity",
+      "operation": "webauthn_verify_assertion",
+      "conformance_level": "MUST"
     }
   ]
 }
