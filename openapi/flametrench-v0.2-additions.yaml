@@ -1,0 +1,683 @@
+openapi: 3.1.0
+
+info:
+  title: Flametrench v0.2 — additions
+  version: 0.2.0-rc.2
+  summary: |
+    Wire-surface additions for v0.2: MFA enrollment + verification, MFA
+    policy CRUD. Composes additively with `flametrench-v0.1.yaml`. Use
+    an OpenAPI bundler (e.g. `swagger-cli bundle`) to merge into a
+    single served spec.
+  description: |
+    Status: Proposed (v0.2 — release-candidate).
+
+    This file defines ONLY the new wire-surface additions for v0.2. The
+    v0.1 paths (`/users`, `/credentials`, `/sessions`, `/orgs`,
+    `/invitations`, `/tuples`, etc.) remain in `flametrench-v0.1.yaml`
+    and are unchanged in their shape — they coexist with the additions
+    here.
+
+    v0.2 introduces two capability surfaces that did not exist in v0.1:
+
+      - **MFA enrollment + verification** (per ADR 0008 / ADR 0010): a
+        per-user `mfa_` factor record carrying TOTP / WebAuthn / recovery
+        payloads; verifyMfa accepts a candidate and returns ok plus the
+        matched `mfa_id` and (for WebAuthn) the new sign count.
+      - **`usr_mfa_policy`** (per ADR 0008): a 1:1 row keyed to `usr_id`
+        carrying the enforcement flag and grace window. When required
+        and past grace, `verifyPassword` returns an MFA-required signal
+        instead of minting a session directly. (The signal shape is
+        backwards-compatible: the v0.1 `verifyPassword` 200 response
+        gains an optional `mfa_required: true` discriminator.)
+
+    The verifyPassword response change is documented in
+    `docs/identity.md#multi-factor-authentication-v02--proposed` and is
+    additive — pre-rc clients that ignore the new field continue to
+    work, just without MFA enforcement.
+
+    Spec section pointers in operation descriptions reference the
+    `decisions/` ADRs and the `docs/identity.md` chapter.
+  contact:
+    name: NDC Digital, LLC
+    url: https://flametrench.dev
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: https://api.example.com
+    description: Replace with your deployment's API origin.
+
+security:
+  - bearerAuth: []
+
+paths:
+  /users/{usr_id}/mfa-factors:
+    parameters:
+      - $ref: '#/components/parameters/UsrId'
+    get:
+      tags: [MFA]
+      summary: List a user's MFA factors
+      description: |
+        Returns active and pending factors (TOTP, WebAuthn, recovery)
+        for the user. Sensitive payloads — TOTP secret, WebAuthn
+        public-key bytes, recovery-code hashes — are NEVER returned;
+        only metadata.
+      operationId: listMfaFactors
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [factors]
+                additionalProperties: false
+                properties:
+                  factors:
+                    type: array
+                    items: { $ref: '#/components/schemas/MfaFactor' }
+
+    post:
+      tags: [MFA]
+      summary: Begin MFA factor enrollment
+      description: |
+        Step 1 of two-step enrollment for TOTP and WebAuthn (recovery
+        codes are single-step — see the `recovery` discriminator). The
+        server creates a pending `mfa_` row and returns the
+        type-specific enrollment payload.
+
+        For TOTP: the server generates a fresh secret and returns the
+        otpauth:// URI for QR rendering plus the raw secret base32 for
+        manual entry.
+
+        For WebAuthn: the server returns a WebAuthn registration
+        challenge plus the required client params; the client returns
+        the attestation via `confirmEnrollment`.
+
+        For recovery: the server generates 10 codes, hashes them with
+        Argon2id at the spec floor, and returns the plaintext codes
+        ONCE in the response (the user MUST save them; the server
+        will not show them again). The factor is created in `active`
+        status — recovery codes have no two-step confirmation.
+
+        Pending TOTP/WebAuthn factors expire after 10 minutes if not
+        confirmed.
+      operationId: enrollMfaFactor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EnrollMfaFactorRequest' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EnrollMfaFactorResponse' }
+        '409':
+          description: |
+            Conflict. Common causes: a TOTP factor already active (one
+            per user max); too many pending enrollments.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /mfa-factors/{mfa_id}/confirm:
+    parameters:
+      - $ref: '#/components/parameters/MfaId'
+    post:
+      tags: [MFA]
+      summary: Confirm a pending TOTP or WebAuthn factor
+      description: |
+        Step 2 of two-step enrollment. The user proves possession by:
+
+          - TOTP: presenting the current 6-digit code. The server
+            verifies via the spec's drift window (±1 by default).
+          - WebAuthn: returning the attestation from
+            `navigator.credentials.create()`. The server validates the
+            attestation, extracts the COSE public key, and stores it
+            on the `mfa_` row.
+
+        On success the factor transitions from `pending` to `active`.
+        Pending → active is the spec-required confirmation step — apps
+        MUST NOT bypass it (see ADR 0008 §"Two-step enrollment").
+      operationId: confirmMfaEnrollment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConfirmMfaEnrollmentRequest' }
+      responses:
+        '200':
+          description: Confirmed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MfaFactor' }
+        '409':
+          description: |
+            Conflict. Common causes: factor is not pending; the proof
+            (TOTP code or WebAuthn attestation) failed verification;
+            `pending_expires_at` has passed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /mfa-factors/{mfa_id}/revoke:
+    parameters:
+      - $ref: '#/components/parameters/MfaId'
+    post:
+      tags: [MFA]
+      summary: Revoke an MFA factor
+      description: |
+        Terminal-state transition. A revoked factor cannot be used for
+        verification and cannot be reinstated; re-enrollment creates a
+        new `mfa_` row with `replaces = old.id`.
+      operationId: revokeMfaFactor
+      responses:
+        '200':
+          description: Revoked.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MfaFactor' }
+
+  /users/{usr_id}/mfa/verify:
+    parameters:
+      - $ref: '#/components/parameters/UsrId'
+    post:
+      tags: [MFA]
+      summary: Verify an MFA factor proof
+      description: |
+        Returns ok=true and the matched `mfa_id` on success. Does NOT
+        issue a session — the session-mint path is
+        `verifyPassword → verifyMfa → createSession`, three calls the
+        application sequences.
+
+        On WebAuthn success the response also carries the new sign
+        count; the SDK persists it atomically with the session
+        decision (see ADR 0008 §"verifyMfa" and ADR 0010).
+
+        On failure returns 401 with the structured Error envelope. The
+        verifyMfa call is rate-limited at the application layer; the
+        spec does not pin the rate.
+      operationId: verifyMfa
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VerifyMfaRequest' }
+      responses:
+        '200':
+          description: Verified.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VerifyMfaResponse' }
+        '401':
+          description: |
+            Verification failed. Common reasons: wrong TOTP code; bad
+            WebAuthn assertion (signature, RP-ID, UV flag, counter);
+            recovery code not in the active set, already consumed, or
+            malformed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /users/{usr_id}/mfa-policy:
+    parameters:
+      - $ref: '#/components/parameters/UsrId'
+    get:
+      tags: [MFA]
+      summary: Get a user's MFA enforcement policy
+      description: |
+        Returns the policy row keyed 1:1 to the user. If the user has
+        no row the response is 200 with `required: false` and
+        `grace_until: null` — the absence-of-row default.
+      operationId: getMfaPolicy
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserMfaPolicy' }
+
+    put:
+      tags: [MFA]
+      summary: Set or replace a user's MFA enforcement policy
+      description: |
+        Idempotent upsert. When `required` is true and `grace_until`
+        is null or past, `verifyPassword` produces the MFA-required
+        signal instead of minting a session directly.
+
+        The grace window enables policy rollout without locking users
+        out before they've enrolled a factor. Set
+        `grace_until = now() + N days` to give users a window to
+        enroll before the gate snaps shut.
+      operationId: setMfaPolicy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SetMfaPolicyRequest' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserMfaPolicy' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Session bearer token (matches v0.1 securityScheme — composes
+        cleanly when bundled).
+
+  parameters:
+    UsrId:
+      in: path
+      name: usr_id
+      required: true
+      schema: { $ref: '#/components/schemas/UsrId' }
+    MfaId:
+      in: path
+      name: mfa_id
+      required: true
+      schema: { $ref: '#/components/schemas/MfaId' }
+
+  schemas:
+    # ─── ID + envelope shapes (re-declared for standalone bundling) ────
+
+    UsrId:
+      type: string
+      pattern: '^usr_[0-9a-f]{32}$'
+      description: Wire-format prefixed UUIDv7 for a user.
+
+    MfaId:
+      type: string
+      pattern: '^mfa_[0-9a-f]{32}$'
+      description: Wire-format prefixed UUIDv7 for an MFA factor.
+
+    Timestamp:
+      type: string
+      format: date-time
+      description: RFC 3339 UTC timestamp.
+
+    Error:
+      type: object
+      required: [code, message]
+      additionalProperties: false
+      description: |
+        Stable error envelope. The `code` is dot-namespaced and
+        machine-readable; `message` is human-readable and not pinned
+        across versions.
+      properties:
+        code:
+          type: string
+          description: |
+            Examples: `webauthn.signature_invalid`,
+            `webauthn.counter_regression`,
+            `mfa.code_invalid`, `mfa.factor_not_pending`,
+            `precondition.identifier_mismatch`.
+        message: { type: string }
+
+    # ─── Factor records ──────────────────────────────────────────────
+
+    MfaFactor:
+      oneOf:
+        - $ref: '#/components/schemas/TotpFactor'
+        - $ref: '#/components/schemas/WebAuthnFactor'
+        - $ref: '#/components/schemas/RecoveryFactor'
+      discriminator:
+        propertyName: type
+        mapping:
+          totp: '#/components/schemas/TotpFactor'
+          webauthn: '#/components/schemas/WebAuthnFactor'
+          recovery: '#/components/schemas/RecoveryFactor'
+
+    FactorStatus:
+      type: string
+      enum: [pending, active, suspended, revoked]
+      description: |
+        Lifecycle status. `pending` — for TOTP/WebAuthn between enroll
+        and confirm. `active` — usable for verifyMfa. Recovery codes
+        start active. `suspended` / `revoked` — terminal-ish per
+        ADR 0005.
+
+    TotpFactor:
+      type: object
+      required: [id, type, status, identifier, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        id:           { $ref: '#/components/schemas/MfaId' }
+        type:         { const: totp }
+        status:       { $ref: '#/components/schemas/FactorStatus' }
+        identifier:
+          type: string
+          description: Human-readable label (e.g. "iPhone", "1Password").
+        replaces:
+          oneOf:
+            - $ref: '#/components/schemas/MfaId'
+            - type: 'null'
+        created_at:   { $ref: '#/components/schemas/Timestamp' }
+        updated_at:   { $ref: '#/components/schemas/Timestamp' }
+
+    WebAuthnFactor:
+      type: object
+      required: [id, type, status, identifier, rp_id, sign_count, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        id:           { $ref: '#/components/schemas/MfaId' }
+        type:         { const: webauthn }
+        status:       { $ref: '#/components/schemas/FactorStatus' }
+        identifier:
+          type: string
+          description: |
+            Base64url-encoded WebAuthn credential ID. Used by verifyMfa
+            to locate the factor for an incoming assertion.
+        rp_id:        { type: string }
+        sign_count:
+          type: integer
+          format: int64
+          minimum: 0
+          description: |
+            Last-known authenticator signature counter. Per WebAuthn
+            §6.1.1, an incoming assertion's counter MUST strictly
+            advance this value (or both MUST be zero).
+        aaguid:
+          oneOf:
+            - type: string
+              format: uuid
+              description: Authenticator AAGUID per RFC 8809.
+            - type: 'null'
+        transports:
+          type: array
+          items: { type: string, enum: [usb, nfc, ble, hybrid, internal] }
+        replaces:
+          oneOf:
+            - $ref: '#/components/schemas/MfaId'
+            - type: 'null'
+        created_at:   { $ref: '#/components/schemas/Timestamp' }
+        updated_at:   { $ref: '#/components/schemas/Timestamp' }
+
+    RecoveryFactor:
+      type: object
+      required: [id, type, status, remaining, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        id:           { $ref: '#/components/schemas/MfaId' }
+        type:         { const: recovery }
+        status:       { $ref: '#/components/schemas/FactorStatus' }
+        remaining:
+          type: integer
+          minimum: 0
+          maximum: 10
+          description: Number of unconsumed codes left in the set.
+        replaces:
+          oneOf:
+            - $ref: '#/components/schemas/MfaId'
+            - type: 'null'
+        created_at:   { $ref: '#/components/schemas/Timestamp' }
+        updated_at:   { $ref: '#/components/schemas/Timestamp' }
+
+    # ─── Enroll request / response ────────────────────────────────────
+
+    EnrollMfaFactorRequest:
+      oneOf:
+        - $ref: '#/components/schemas/EnrollTotpRequest'
+        - $ref: '#/components/schemas/EnrollWebAuthnRequest'
+        - $ref: '#/components/schemas/EnrollRecoveryRequest'
+      discriminator:
+        propertyName: type
+        mapping:
+          totp: '#/components/schemas/EnrollTotpRequest'
+          webauthn: '#/components/schemas/EnrollWebAuthnRequest'
+          recovery: '#/components/schemas/EnrollRecoveryRequest'
+
+    EnrollTotpRequest:
+      type: object
+      required: [type, identifier]
+      additionalProperties: false
+      properties:
+        type:       { const: totp }
+        identifier: { type: string, description: Human-readable label. }
+
+    EnrollWebAuthnRequest:
+      type: object
+      required: [type]
+      additionalProperties: false
+      properties:
+        type:       { const: webauthn }
+        rp_id:
+          type: string
+          description: |
+            RP ID to bind the credential to. Defaults to the request
+            origin's hostname; explicit override allowed for subdomain
+            scoping.
+
+    EnrollRecoveryRequest:
+      type: object
+      required: [type]
+      additionalProperties: false
+      properties:
+        type: { const: recovery }
+
+    EnrollMfaFactorResponse:
+      type: object
+      required: [factor]
+      additionalProperties: false
+      properties:
+        factor: { $ref: '#/components/schemas/MfaFactor' }
+        # Type-specific enrollment payload. Present only for TOTP +
+        # WebAuthn + recovery; consumers branch on factor.type.
+        totp_enrollment:
+          oneOf:
+            - $ref: '#/components/schemas/TotpEnrollmentPayload'
+            - type: 'null'
+        webauthn_enrollment:
+          oneOf:
+            - $ref: '#/components/schemas/WebAuthnEnrollmentPayload'
+            - type: 'null'
+        recovery_codes:
+          oneOf:
+            - type: array
+              minItems: 10
+              maxItems: 10
+              items: { type: string, pattern: '^[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}$' }
+              description: |
+                Plaintext recovery codes, returned ONCE. The server
+                stores only Argon2id hashes; lost codes cannot be
+                recovered, only re-issued (which revokes the old set).
+            - type: 'null'
+
+    TotpEnrollmentPayload:
+      type: object
+      required: [secret_b32, otpauth_uri, period, digits, algorithm]
+      additionalProperties: false
+      properties:
+        secret_b32:  { type: string, description: Base32-encoded shared secret. }
+        otpauth_uri: { type: string, description: 'otpauth:// URI for QR rendering.' }
+        period:      { type: integer, default: 30 }
+        digits:      { type: integer, default: 6 }
+        algorithm:   { type: string, enum: [sha1, sha256, sha512] }
+
+    WebAuthnEnrollmentPayload:
+      type: object
+      required: [challenge_b64u, rp_id, user_id_b64u, pub_key_cred_params]
+      additionalProperties: false
+      description: |
+        The shape returned to the browser for
+        `navigator.credentials.create()`. Fields are pre-encoded for
+        direct use in the WebAuthn JS API.
+      properties:
+        challenge_b64u: { type: string }
+        rp_id:          { type: string }
+        user_id_b64u:   { type: string }
+        pub_key_cred_params:
+          type: array
+          items:
+            type: object
+            required: [type, alg]
+            properties:
+              type: { const: public-key }
+              alg:  { type: integer, enum: [-7, -257, -8], description: 'COSE alg: -7 ES256, -257 RS256, -8 EdDSA' }
+        timeout_ms: { type: integer, default: 60000 }
+
+    # ─── Confirm + verify ─────────────────────────────────────────────
+
+    ConfirmMfaEnrollmentRequest:
+      oneOf:
+        - $ref: '#/components/schemas/ConfirmTotpProof'
+        - $ref: '#/components/schemas/ConfirmWebAuthnAttestation'
+      discriminator:
+        propertyName: type
+        mapping:
+          totp: '#/components/schemas/ConfirmTotpProof'
+          webauthn: '#/components/schemas/ConfirmWebAuthnAttestation'
+
+    ConfirmTotpProof:
+      type: object
+      required: [type, code]
+      additionalProperties: false
+      properties:
+        type: { const: totp }
+        code:
+          type: string
+          pattern: '^[0-9]{6,10}$'
+          description: Current TOTP code from the user's authenticator app.
+
+    ConfirmWebAuthnAttestation:
+      type: object
+      required: [type, attestation]
+      additionalProperties: false
+      properties:
+        type: { const: webauthn }
+        attestation:
+          type: object
+          description: |
+            The `AuthenticatorAttestationResponse` JSON shape from the
+            browser. Fields are base64url-encoded byte strings; the
+            server decodes and validates per the WebAuthn spec.
+          required: [client_data_json_b64u, attestation_object_b64u, credential_id_b64u]
+          additionalProperties: false
+          properties:
+            client_data_json_b64u:    { type: string }
+            attestation_object_b64u:  { type: string }
+            credential_id_b64u:       { type: string }
+            transports:
+              type: array
+              items: { type: string, enum: [usb, nfc, ble, hybrid, internal] }
+
+    VerifyMfaRequest:
+      oneOf:
+        - $ref: '#/components/schemas/VerifyTotpProof'
+        - $ref: '#/components/schemas/VerifyWebAuthnProof'
+        - $ref: '#/components/schemas/VerifyRecoveryProof'
+      discriminator:
+        propertyName: type
+        mapping:
+          totp: '#/components/schemas/VerifyTotpProof'
+          webauthn: '#/components/schemas/VerifyWebAuthnProof'
+          recovery: '#/components/schemas/VerifyRecoveryProof'
+
+    VerifyTotpProof:
+      type: object
+      required: [type, code]
+      additionalProperties: false
+      properties:
+        type: { const: totp }
+        code: { type: string, pattern: '^[0-9]{6,10}$' }
+
+    VerifyWebAuthnProof:
+      type: object
+      required: [type, assertion]
+      additionalProperties: false
+      properties:
+        type: { const: webauthn }
+        assertion:
+          type: object
+          description: |
+            The `AuthenticatorAssertionResponse` JSON shape from the
+            browser. Server looks up the factor by credential_id_b64u,
+            then verifies signature + RP-ID + UV flag + counter
+            advancement per ADR 0008 / ADR 0010.
+          required:
+            [client_data_json_b64u, authenticator_data_b64u, signature_b64u, credential_id_b64u]
+          additionalProperties: false
+          properties:
+            client_data_json_b64u:   { type: string }
+            authenticator_data_b64u: { type: string }
+            signature_b64u:          { type: string }
+            credential_id_b64u:      { type: string }
+            user_handle_b64u:
+              oneOf:
+                - { type: string }
+                - { type: 'null' }
+
+    VerifyRecoveryProof:
+      type: object
+      required: [type, code]
+      additionalProperties: false
+      properties:
+        type: { const: recovery }
+        code:
+          type: string
+          description: |
+            Recovery code in canonical XXXX-XXXX-XXXX form, OR a
+            normalize-to-canonical form (uppercase, whitespace
+            stripped). The server normalizes before hashing.
+
+    VerifyMfaResponse:
+      type: object
+      required: [ok, mfa_id, type, mfa_verified_at]
+      additionalProperties: false
+      description: |
+        Successful response. The client should next call createSession
+        (or pass the verified bearer through to the existing session)
+        — verifyMfa does NOT mint a session itself.
+      properties:
+        ok: { const: true }
+        mfa_id: { $ref: '#/components/schemas/MfaId' }
+        type: { type: string, enum: [totp, webauthn, recovery] }
+        mfa_verified_at: { $ref: '#/components/schemas/Timestamp' }
+        new_sign_count:
+          oneOf:
+            - type: integer
+              format: int64
+              minimum: 0
+              description: 'WebAuthn only: the new authenticator counter to persist.'
+            - type: 'null'
+
+    # ─── usr_mfa_policy ───────────────────────────────────────────────
+
+    UserMfaPolicy:
+      type: object
+      required: [usr_id, required, grace_until, updated_at]
+      additionalProperties: false
+      properties:
+        usr_id:      { $ref: '#/components/schemas/UsrId' }
+        required:    { type: boolean }
+        grace_until:
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+        updated_at:  { $ref: '#/components/schemas/Timestamp' }
+
+    SetMfaPolicyRequest:
+      type: object
+      required: [required]
+      additionalProperties: false
+      properties:
+        required:    { type: boolean }
+        grace_until:
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+
+tags:
+  - name: MFA
+    description: |
+      Multi-factor authentication primitives per ADR 0008 and ADR 0010.
+      Adds `mfa_` factor records (TOTP, WebAuthn, recovery), policy
+      enforcement (`usr_mfa_policy`), and the `verifyMfa` operation.

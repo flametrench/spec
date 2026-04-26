@@ -1400,13 +1400,34 @@ components:
       additionalProperties: false
       description: |
         If the invitee already has a `usr_` account, pass it as
-        `as_usr_id`. Otherwise the operation creates a new user and
-        returns its id.
+        `as_usr_id` AND pass `accepting_identifier` matching
+        `invitation.identifier`. Otherwise pass neither and the
+        operation creates a new user, returning its id.
+
+        **Security (ADR 0009).** When `as_usr_id` is supplied,
+        `accepting_identifier` is REQUIRED. The server byte-compares
+        it to `invitation.identifier`; mismatch returns 409
+        `precondition.identifier_mismatch`, omission returns 409
+        `precondition.identifier_binding_required`.
+
+        The host application MUST source `accepting_identifier` from
+        the authenticated session (typically the canonical email or
+        handle attached to the bearer token's `usr_id`). It MUST NOT
+        forward this field directly from a request body without an
+        authenticity check, or any caller can claim any identifier.
       properties:
         as_usr_id:
           oneOf:
             - $ref: '#/components/schemas/UsrId'
             - type: 'null'
+        accepting_identifier:
+          type: string
+          description: |
+            REQUIRED when `as_usr_id` is supplied. The canonical
+            identifier (typically email) of the accepting user, sourced
+            from the authenticated session. The server byte-compares
+            against `invitation.identifier`.
+          example: alice@example.com
 
     AcceptInvitationResponse:
       type: object
