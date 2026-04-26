@@ -36,9 +36,21 @@ for (const entry of index.fixtures) {
   if (fixture.conformance_level !== entry.conformance_level) {
     err(`${entry.path}: index says conformance_level=${entry.conformance_level} but fixture says conformance_level=${fixture.conformance_level}`);
   }
-  if (fixture.spec_version !== index.spec_version) {
-    err(`${entry.path}: fixture spec_version=${fixture.spec_version} does not match index spec_version=${index.spec_version}`);
+  // Each fixture declares the spec_version it was introduced under.
+  // The index's spec_version is the current target. v0.2 fixtures may
+  // coexist with v0.1 fixtures in the same index — what we enforce is
+  // that no fixture targets a version higher than the index.
+  if (semverGreaterThan(fixture.spec_version, index.spec_version)) {
+    err(`${entry.path}: fixture spec_version=${fixture.spec_version} exceeds index spec_version=${index.spec_version}`);
   }
+}
+
+function semverGreaterThan(a, b) {
+  const [aa, ab, ac] = a.split(".").map(Number);
+  const [ba, bb, bc] = b.split(".").map(Number);
+  if (aa !== ba) return aa > ba;
+  if (ab !== bb) return ab > bb;
+  return ac > bc;
 }
 
 // Check no .json fixture file on disk is missing from the index.

@@ -84,12 +84,47 @@
           "minItems": 1,
           "items": { "$ref": "#/$defs/Step" },
           "description": "State-machine form: ordered list of operations the harness invokes against a fresh store. Each step's result MAY be captured for later substitution."
+        },
+        "rules": {
+          "type": "object",
+          "description": "v0.2 only: optional authz rewrite rules to register with the store before running the test. Keys are object_type values; each maps to a relation→rule map. Per ADR 0007.",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/RuleNode" }
+            }
+          }
         }
       },
       "oneOf": [
         { "required": ["input", "expected"] },
         { "required": ["steps"] }
       ]
+    },
+    "RuleNode": {
+      "type": "object",
+      "description": "A single primitive in a rewrite-rule union. v0.2 supports three node types: this, computed_userset, tuple_to_userset.",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["this", "computed_userset", "tuple_to_userset"]
+        },
+        "relation": {
+          "type": "string",
+          "description": "For computed_userset: the relation to recurse with on the same object."
+        },
+        "tupleset_relation": {
+          "type": "string",
+          "description": "For tuple_to_userset: the relation traversed on the current object."
+        },
+        "computed_userset_relation": {
+          "type": "string",
+          "description": "For tuple_to_userset: the relation to check on each subject reached via the tupleset hop."
+        }
+      }
     },
     "Step": {
       "type": "object",

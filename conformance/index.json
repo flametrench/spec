@@ -1,7 +1,7 @@
 {
   "$schema": "./index.schema.json",
-  "spec_version": "0.1.0",
-  "description": "Flametrench v0.1 conformance fixture manifest. Harnesses auto-discover fixture files from this index.",
+  "spec_version": "0.2.0",
+  "description": "Flametrench conformance fixture manifest. Indexed at the current development spec version (0.2.0). Individual fixtures declare the spec_version they were introduced under; v0.1 fixtures coexist with v0.2 additions in the same index. Harnesses auto-discover fixture files from this manifest.",
   "fixtures": [
     {
       "path": "fixtures/ids/encode.json",
@@ -91,6 +91,24 @@
       "path": "fixtures/tenancy/invitation-accept.json",
       "capability": "tenancy",
       "operation": "accept_invitation",
+      "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/authorization/rewrite-rules/computed-userset.json",
+      "capability": "authorization",
+      "operation": "check",
+      "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/authorization/rewrite-rules/tuple-to-userset.json",
+      "capability": "authorization",
+      "operation": "check",
+      "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/authorization/rewrite-rules/empty-rules-equals-v01.json",
+      "capability": "authorization",
+      "operation": "check",
       "conformance_level": "MUST"
     }
   ]
