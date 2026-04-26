@@ -188,10 +188,18 @@ The `acceptInvitation(inv_id, ...)` operation MUST execute in a single transacti
 
 Any failure rolls back the entire transaction. The invitation remains `pending` and no partial state is persisted.
 
+### Identifier binding (normative)
+
+When an existing-user `as_usr_id` is supplied to `acceptInvitation`, callers MUST also supply `accepting_identifier`. The SDK byte-compares `accepting_identifier == invitation.identifier`; mismatch raises `IdentifierMismatchError` (`code: precondition.identifier_mismatch`) and the transaction is not started. Omitting the parameter when `as_usr_id` is supplied raises `IdentifierBindingRequiredError` (`code: precondition.identifier_binding_required`) — the SDK fails closed rather than allow the implicit pre-v0.1.x behavior. See [ADR 0009](../decisions/0009-invitation-accept-binding.md) for the rationale.
+
+The host application MUST source `accepting_identifier` from the authenticated session context — typically the canonical email or handle attached to the bearer token's `usr_id`. The host MUST NOT source it from the request body without an authenticity check that ties the body field to the authenticated subject. The SDK enforces the byte-equality; the host's auth layer enforces the source authenticity. Neither layer alone is sufficient.
+
+The mint-new-user path (`as_usr_id = null`) does not require `accepting_identifier`: the SDK creates a fresh `usr_` and the host wires the corresponding credential separately, with `cred.identifier = invitation.identifier`. The binding is enforced post-hoc when that credential is created at the Identity layer.
+
 ### Operations
 
 - `createInvitation(org_id, identifier, role, pre_tuples?, expires_at) → inv_id`.
-- `acceptInvitation(inv_id, as_usr_id?)` — if the invitee already has an account, pass their `usr_id`; otherwise the operation creates one.
+- `acceptInvitation(inv_id, as_usr_id?, accepting_identifier?)` — if the invitee already has an account, pass their `usr_id` AND `accepting_identifier` (the canonical identifier for that account, sourced from the host's auth context). If `as_usr_id` is null, the operation creates a fresh user; `accepting_identifier` may be omitted.
 - `declineInvitation(inv_id, as_usr_id?)`.
 - `revokeInvitation(inv_id, admin_usr_id)` — subject to admin authorization on the target org.
 - `getInvitation(inv_id) → inv`.

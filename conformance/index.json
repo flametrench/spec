@@ -94,6 +94,12 @@
       "conformance_level": "MUST"
     },
     {
+      "path": "fixtures/tenancy/invitation-accept-binding.json",
+      "capability": "tenancy",
+      "operation": "accept_invitation",
+      "conformance_level": "MUST"
+    },
+    {
       "path": "fixtures/authorization/rewrite-rules/computed-userset.json",
       "capability": "authorization",
       "operation": "check",

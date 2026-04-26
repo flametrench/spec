@@ -27,6 +27,7 @@ ADRs are numbered sequentially from 0001 in the order accepted. Numbers never ch
 | [0006](./0006-legacy-password-migration.md) | Legacy password migration: host-side verify-then-rotate | Migration story for bcrypt/PBKDF2/scrypt apps adopting Flametrench |
 | [0007](./0007-authorization-rewrite-rules.md) | Authorization rewrite rules (v0.2 — Proposed) | Subset of Zanzibar userset_rewrite: computed_userset, tuple_to_userset, union |
 | [0008](./0008-mfa.md) | Multi-factor authentication (v0.2 — Proposed) | TOTP (RFC 6238) + WebAuthn assertion verification + recovery codes; new mfa_ entity |
+| [0009](./0009-invitation-accept-binding.md) | Invitation acceptance binding | acceptInvitation requires `accepting_identifier` and byte-matches it to `invitation.identifier`; closes a privilege-escalation primitive in v0.1 |
 
 ## Writing a new ADR
 
