@@ -5,6 +5,7 @@ Non-normative implementation artifacts. Anything here clarifies or demonstrates 
 ## What's in this directory
 
 - **`postgres.sql`** — reference Postgres schema implementing the v0.1 data model. The bottom of the file carries v0.2 additions (MFA tables, `ses.mfa_verified_at`) under a clearly marked section; everything above is byte-identical to v0.1, so a v0.1 deployment can adopt v0.2 by running the additive DDL block.
+- **`postgres-rls.sql`** — optional Row-Level Security policies. Apply AFTER `postgres.sql`. Installs per-table policies that read two session GUCs (`flametrench.current_usr_id`, `flametrench.actor_role`) and scope visibility/writes by user identity and org membership. The application sets the GUCs at the start of each request from its authentication context; RLS then enforces isolation regardless of whether the application's own checks are bug-free.
 
 ## What's normative vs. reference
 
@@ -62,7 +63,6 @@ The v0.2 block is purely additive. A v0.1 deployment can run the additive DDL on
 
 ## What's not in the reference yet
 
-- **Row-level security** policies. The spec doesn't mandate RLS, but production deployments generally want it to prevent data leaks across orgs. A future `postgres-rls.sql` companion is planned.
 - **Performance tuning notes.** Hot-path query tuning, autovacuum settings for high-churn tables like `ses` and `tup`, partitioning guidance for very large `tup` tables.
 - **Migration scaffolding.** Up/down patterns for schema evolution between spec versions.
 

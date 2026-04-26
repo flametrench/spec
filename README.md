@@ -24,23 +24,44 @@ This project is named for that piece of infrastructure. Identity, tenancy, and a
 
 Flametrench v0.1 covers three capabilities. Detailed specs live in [`docs/identity.md`](docs/identity.md), [`docs/tenancy.md`](docs/tenancy.md), and [`docs/authorization.md`](docs/authorization.md); the design decisions behind them are recorded in [`decisions/`](decisions/).
 
-**Identity.** Opaque users (`usr_`); multiple credentials per user (`cred_`) with three types — password (Argon2id, parameters pinned), passkey (WebAuthn), OIDC. User-bound sessions (`ses_`) with rotation on refresh. MFA is deferred to v0.2+; applications can layer it on by chaining credential verifications.
+**Identity.** Opaque users (`usr_`); multiple credentials per user (`cred_`) with three types — password (Argon2id, parameters pinned), passkey (WebAuthn), OIDC. User-bound sessions (`ses_`) with rotation on refresh. MFA arrives in v0.2 (see below); v0.1 applications can layer MFA on by chaining credential verifications until they upgrade.
 
-**Tenancy.** Flat organizations (`org_`); multi-organization memberships (`mem_`); five-state invitations (`inv_`) with atomic acceptance and resource-scoped pre-declared tuples. Role changes use a revoke-and-re-add chain for tamper-evident history. Sole-owner protection on both self-leave and admin-remove paths.
+**Tenancy.** Flat organizations (`org_`); multi-organization memberships (`mem_`); five-state invitations (`inv_`) with atomic acceptance and resource-scoped pre-declared tuples. Role changes use a revoke-and-re-add chain for tamper-evident history. Sole-owner protection on both self-leave and admin-remove paths. Invitation acceptance binding (ADR 0009) lands as a v0.1.x security backport.
 
-**Authorization.** Relational tuples (`tup_`) as the only authz primitive; exact-match `check()` over single relations or non-empty relation sets. Six built-in relations (`owner`, `admin`, `member`, `guest`, `viewer`, `editor`) plus application-registered custom relations. No rewrite rules or derivations in v0.1 — applications materialize implied grants or compose checks at call sites. Rewrite rules, group subjects, and parent-child inheritance are deferred to v0.2+.
+**Authorization.** Relational tuples (`tup_`) as the only authz primitive; exact-match `check()` over single relations or non-empty relation sets. Six built-in relations (`owner`, `admin`, `member`, `guest`, `viewer`, `editor`) plus application-registered custom relations. No rewrite rules or derivations in v0.1 — applications materialize implied grants or compose checks at call sites. Rewrite rules arrive in v0.2 (ADR 0007); group subjects and parent-child inheritance remain deferred.
+
+## What v0.2 adds (Proposed; release-candidate)
+
+v0.2 is feature-complete in source and tagged across the four SDK families as `v0.2.0-rc.2`. The work splits across two ADRs and one backport:
+
+**Authorization rewrite rules (ADR 0007).** A subset of Zanzibar's `userset_rewrite`: the three node types `this`, `computed_userset`, and `tuple_to_userset`, composed via union. Cycle detection and depth/fan-out bounds (8 / 1024). Rules ride on top of v0.1's exact-match `check()` — when no rules are registered, behavior is byte-identical to v0.1.
+
+**Multi-factor authentication (ADRs 0008 + 0010).** Three first-class factor types under a new `mfa_` ID prefix:
+
+- **TOTP** (RFC 6238) — SHA-1 / SHA-256 / SHA-512 with the standard test vectors pinned in conformance.
+- **WebAuthn assertion verification** — ES256 + RS256 + EdDSA, dispatched from the COSE_Key's `alg` field. Signature counter monotonicity per spec §6.1.1 cloned-authenticator detection.
+- **Recovery codes** — 10 single-use codes in a 31-char alphabet excluding `0/O/1/I/L`.
+
+Per-user enforcement via `usr_mfa_policy` (with grace window for rollout). `verifyMfa` does not mint sessions itself; the session-mint path becomes `verifyPassword → verifyMfa → createSession`, three calls the application sequences.
+
+**Invitation acceptance binding (ADR 0009).** Closes a privilege-escalation primitive in v0.1 where any authenticated user could accept an admin-targeted invitation. Backported into v0.1.x; `acceptInvitation` now requires `accepting_identifier` to byte-match `invitation.identifier` when the caller asserts an existing `usr_id`.
 
 Everything else — audit logs, notifications, file handling, billing hooks, feature flags — is explicitly out of scope for v0.1 and arrives in later versions. Shipping narrow is the point.
 
-## The two-language promise
+## SDK families
 
-Flametrench ships initial support for Laravel and Next.js, and the specification is designed so any language can implement it.
+Flametrench ships four first-party SDK families, all conforming to the same fixture corpus:
 
-- **Laravel SDK** (PHP 8.3+, Laravel 11+) lives at [github.com/flametrench/laravel](https://github.com/flametrench/laravel)
-- **Node SDK** (Node 20+, Next.js 15+ App Router) lives at [github.com/flametrench/node](https://github.com/flametrench/node)
-- **Admin UI** (framework-agnostic, works against any compliant backend) lives at [github.com/flametrench/admin](https://github.com/flametrench/admin)
+| Language | Repos |
+|---|---|
+| Python 3.11+ | [`ids-python`](https://github.com/flametrench/ids-python), [`identity-python`](https://github.com/flametrench/identity-python), [`tenancy-python`](https://github.com/flametrench/tenancy-python), [`authz-python`](https://github.com/flametrench/authz-python) |
+| Node 20+ (TypeScript, monorepo) | [`flametrench/node`](https://github.com/flametrench/node) — `@flametrench/{ids,identity,tenancy,authz}` |
+| PHP 8.3+ | [`ids-php`](https://github.com/flametrench/ids-php), [`identity-php`](https://github.com/flametrench/identity-php), [`tenancy-php`](https://github.com/flametrench/tenancy-php), [`authz-php`](https://github.com/flametrench/authz-php) |
+| Java 17+ | [`ids-java`](https://github.com/flametrench/ids-java), [`identity-java`](https://github.com/flametrench/identity-java), [`tenancy-java`](https://github.com/flametrench/tenancy-java), [`authz-java`](https://github.com/flametrench/authz-java) |
 
-A conformance test suite lives alongside the specification. SDKs claim compliance by running the suite against themselves and passing. A passing badge on a third-party implementation means it behaves identically to the reference implementations in ways that matter.
+A framework adapter for Laravel ([`flametrench/laravel`](https://github.com/flametrench/laravel)) layers on top of the PHP SDK family.
+
+A conformance test suite lives alongside the specification (24 fixture files at v0.2.0-rc.2). SDKs claim compliance by running the fixtures against themselves; cross-language parity is enforced by the same fixtures consumed by all four families.
 
 ## What this specification defines
 
@@ -59,9 +80,13 @@ What this specification does not define:
 
 ## Status
 
-**Pre-release.** The specification is actively being written. OpenAPI documents are in draft. The conformance suite is a skeleton. Neither SDK is installable yet. Nothing here should be trusted for production.
+- **v0.1 spec**: feature-complete in source. Adopted by sitesource/admin (the first PHP adopter); spec#5 surfaced in adoption and was patched in v0.1.x via ADR 0009.
+- **v0.2 spec**: tagged `v0.2.0-rc.2`. Locks the surface (rewrite rules + MFA TOTP/WebAuthn/recovery + WebAuthn ES256/RS256/EdDSA) for adopter validation before final.
+- **SDKs**: Python / Node / PHP / Java each tagged `v0.2.0-rc.2` for `identity` (which carries the WebAuthn algorithm extensions); `ids` and `authz` tagged `v0.2.0-rc.1`. Tenancy tagged `v0.1.1` (security patch for ADR 0009).
+- **Postgres reference**: `postgres.sql` covers the full v0.1 + v0.2 data model. `postgres-rls.sql` is an optional RLS companion.
+- **Conformance suite**: 24 fixture files, executed by all four SDK families.
 
-This README will update as capabilities move from draft to stable. The `docs/versioning.md` document explains how the specification versions and how SDKs track compatibility.
+The release-candidate is the right time to integrate, file issues, and shape the v0.2 final. Nothing in flametrench is pinned for production until v0.2 final ships.
 
 ## Structure of this repository
 
@@ -75,18 +100,31 @@ flametrench/spec/
 │   ├── identity.md              identity capability (normative)
 │   ├── tenancy.md               tenancy capability (normative)
 │   └── authorization.md         authorization capability (normative)
-├── decisions/                   Architecture Decision Records
+├── decisions/                   Architecture Decision Records (10 ADRs)
 │   ├── README.md                index + ADR writing guide
-│   ├── 0001-authorization-model.md
-│   ├── 0002-tenancy-model.md
-│   ├── 0003-invitation-state-machine.md
-│   ├── 0004-identity-model.md
-│   └── 0005-revoke-and-re-add.md
+│   ├── 0001 — authorization model
+│   ├── 0002 — tenancy model
+│   ├── 0003 — invitation state machine
+│   ├── 0004 — identity model
+│   ├── 0005 — revoke-and-re-add lifecycle pattern
+│   ├── 0006 — legacy password migration
+│   ├── 0007 — authorization rewrite rules                 (v0.2)
+│   ├── 0008 — multi-factor authentication                 (v0.2)
+│   ├── 0009 — invitation acceptance binding               (v0.1.x security)
+│   └── 0010 — WebAuthn RS256 + EdDSA                       (v0.2)
 ├── reference/                   non-normative implementation artifacts
 │   ├── README.md                conventions; what's normative vs reference
-│   └── postgres.sql             reference Postgres DDL
-├── openapi/                     HTTP surface (in progress)
-└── conformance/                 conformance fixtures (in progress)
+│   ├── postgres.sql             reference Postgres DDL (v0.1 + v0.2 additive)
+│   └── postgres-rls.sql         optional Row-Level Security companion
+├── openapi/
+│   ├── flametrench-v0.1.yaml    v0.1 wire surface (ADR 0009 patch included)
+│   └── flametrench-v0.2-additions.yaml   MFA additive overlay
+├── conformance/
+│   ├── index.json               24-fixture manifest
+│   ├── fixture.schema.json
+│   ├── fixtures/                cross-SDK fixture corpus
+│   └── (validator + harness in .github/scripts)
+└── tools/                       fixture generators (Python, deterministic)
 ```
 
 ## How to follow along
