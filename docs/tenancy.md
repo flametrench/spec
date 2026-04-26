@@ -16,9 +16,11 @@ This chapter is normative. Rationale lives in [ADR 0002 — Tenancy model](../de
 
 - `id` — UUIDv7; `org_<hex>`.
 - `status` — one of `active`, `suspended`, `revoked`.
+- `name` — optional display name (v0.2; per [ADR 0011](../decisions/0011-org-display-name-slug.md)). SHOULD be set when the org has a human-meaningful identity.
+- `slug` — optional URL handle (v0.2). When set, MUST match `^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$` (DNS-label-style: 1–63 lowercase ASCII chars or digits or hyphens, no leading/trailing hyphen). Globally unique within a deployment when set; NULL allowed.
 - `created_at`, `updated_at`.
 
-Organizations are opaque: no name, no slug, no billing plan in the spec. Those are application concerns. Applications MAY extend with their own columns; the spec does not define extensions.
+`name` has no uniqueness constraint and no length cap pinned at the spec level. `slug` rename is allowed; the old slug becomes free immediately and the spec does NOT track slug history. Adopters that need redirect-from-old-slug semantics implement them at the routing layer.
 
 ### Flat hierarchy
 
@@ -34,8 +36,9 @@ Tri-state, matching users:
 
 ### Operations
 
-- `createOrg() → org_id, owner_mem_id` — creates the org AND the creator's owner membership in one transaction. Both IDs are returned.
+- `createOrg(creator, *, name?, slug?) → {org, owner_membership}` — creates the org AND the creator's owner membership in one transaction. `name` and `slug` are optional v0.2 fields per ADR 0011; supplying a slug that collides with another org raises `OrgSlugConflictError` (`code: conflict.org_slug`).
 - `getOrg(org_id) → org`.
+- `updateOrg(org_id, *, name?, slug?) → org` — partial update of v0.2 metadata fields. An omitted parameter means "don't change"; an explicit null means "set to null." Slug uniqueness violations raise `OrgSlugConflictError`. Updating a revoked org raises `AlreadyTerminalError`.
 - `suspendOrg(org_id)`, `reinstateOrg(org_id)`, `revokeOrg(org_id)`.
 
 ## Memberships

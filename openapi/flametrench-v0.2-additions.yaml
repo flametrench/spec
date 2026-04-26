@@ -2,12 +2,12 @@ openapi: 3.1.0
 
 info:
   title: Flametrench v0.2 — additions
-  version: 0.2.0-rc.2
+  version: 0.2.0-rc.3
   summary: |
     Wire-surface additions for v0.2: MFA enrollment + verification, MFA
-    policy CRUD. Composes additively with `flametrench-v0.1.yaml`. Use
-    an OpenAPI bundler (e.g. `swagger-cli bundle`) to merge into a
-    single served spec.
+    policy CRUD, organization display name + slug (ADR 0011). Composes
+    additively with `flametrench-v0.1.yaml`. Use an OpenAPI bundler
+    (e.g. `swagger-cli bundle`) to merge into a single served spec.
   description: |
     Status: Proposed (v0.2 — release-candidate).
 
@@ -52,6 +52,41 @@ security:
   - bearerAuth: []
 
 paths:
+  # ─────────────────────── Organizations (v0.2 metadata) ───────────────────────
+
+  /orgs/{org_id}:
+    parameters:
+      - $ref: '#/components/parameters/OrgId'
+    put:
+      tags: [Organizations]
+      summary: Update an organization's display name and/or slug
+      description: |
+        Partial update per ADR 0011. An omitted field means "don't
+        change"; an explicit `null` means "set to null." Slug
+        uniqueness violations return 409 with `code: conflict.org_slug`.
+
+        Suspended orgs MAY be updated. Revoked orgs MUST NOT — that
+        path returns 409 with `code: conflict.already_terminal`.
+      operationId: updateOrg
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateOrgRequest' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Organization' }
+        '409':
+          description: |
+            Conflict. Common causes: slug already in use by another org;
+            org is in a terminal state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
   /users/{usr_id}/mfa-factors:
     parameters:
       - $ref: '#/components/parameters/UsrId'
@@ -285,6 +320,11 @@ components:
       name: mfa_id
       required: true
       schema: { $ref: '#/components/schemas/MfaId' }
+    OrgId:
+      in: path
+      name: org_id
+      required: true
+      schema: { $ref: '#/components/schemas/OrgId' }
 
   schemas:
     # ─── ID + envelope shapes (re-declared for standalone bundling) ────
@@ -298,6 +338,63 @@ components:
       type: string
       pattern: '^mfa_[0-9a-f]{32}$'
       description: Wire-format prefixed UUIDv7 for an MFA factor.
+
+    OrgId:
+      type: string
+      pattern: '^org_[0-9a-f]{32}$'
+      description: Wire-format prefixed UUIDv7 for an organization.
+
+    Status:
+      type: string
+      enum: [active, suspended, revoked]
+
+    # ─── Organization (v0.2 metadata fields per ADR 0011) ─────────────
+
+    Organization:
+      type: object
+      required: [id, status, created_at, updated_at]
+      additionalProperties: false
+      description: |
+        v0.2 organization shape. The `name` and `slug` fields are
+        v0.2 additions per ADR 0011; pre-v0.2 servers omit them.
+      properties:
+        id:         { $ref: '#/components/schemas/OrgId' }
+        status:     { $ref: '#/components/schemas/Status' }
+        name:
+          oneOf:
+            - { type: string }
+            - type: 'null'
+        slug:
+          oneOf:
+            - { type: string, pattern: '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$' }
+            - type: 'null'
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        updated_at: { $ref: '#/components/schemas/Timestamp' }
+
+    UpdateOrgRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Partial update for the v0.2 metadata fields. Spec semantics:
+
+          - An OMITTED key means "do not change this field."
+          - An explicit `null` value means "set this field to null."
+
+        At least one field MUST be present; an empty object is a
+        no-op and the server MAY return 200 with the current row OR
+        400, at deployment discretion.
+
+        Slug uniqueness violations raise `OrgSlugConflictError` with
+        OpenAPI Error code `conflict.org_slug`.
+      properties:
+        name:
+          oneOf:
+            - { type: string }
+            - type: 'null'
+        slug:
+          oneOf:
+            - { type: string, pattern: '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$' }
+            - type: 'null'
 
     Timestamp:
       type: string

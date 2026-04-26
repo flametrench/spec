@@ -100,6 +100,12 @@
       "conformance_level": "MUST"
     },
     {
+      "path": "fixtures/tenancy/org-name-slug.json",
+      "capability": "tenancy",
+      "operation": "update_org",
+      "conformance_level": "MUST"
+    },
+    {
       "path": "fixtures/authorization/rewrite-rules/computed-userset.json",
       "capability": "authorization",
       "operation": "check",

@@ -1097,9 +1097,22 @@ components:
       type: object
       required: [id, status, created_at, updated_at]
       additionalProperties: false
+      description: |
+        v0.2 (ADR 0011) introduces optional `name` and `slug` fields.
+        Pre-v0.2 servers omit them; v0.2+ servers always include the
+        keys (with `null` values when unset). Clients MUST tolerate
+        their absence on v0.1 deployments.
       properties:
         id:         { $ref: '#/components/schemas/OrgId' }
         status:     { $ref: '#/components/schemas/Status' }
+        name:
+          oneOf:
+            - { type: string, description: 'Display name. v0.2 only.' }
+            - type: 'null'
+        slug:
+          oneOf:
+            - { type: string, pattern: '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$', description: 'URL handle. v0.2 only. DNS-label-style, globally unique when set.' }
+            - type: 'null'
         created_at: { $ref: '#/components/schemas/Timestamp' }
         updated_at: { $ref: '#/components/schemas/Timestamp' }
 

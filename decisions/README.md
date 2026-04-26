@@ -29,6 +29,7 @@ ADRs are numbered sequentially from 0001 in the order accepted. Numbers never ch
 | [0008](./0008-mfa.md) | Multi-factor authentication (v0.2 — Proposed) | TOTP (RFC 6238) + WebAuthn assertion verification + recovery codes; new mfa_ entity |
 | [0009](./0009-invitation-accept-binding.md) | Invitation acceptance binding | acceptInvitation requires `accepting_identifier` and byte-matches it to `invitation.identifier`; closes a privilege-escalation primitive in v0.1 |
 | [0010](./0010-webauthn-rs256-eddsa.md) | WebAuthn RS256 + EdDSA (v0.2 — Proposed) | Extends ADR 0008 verifier to dispatch on COSE `alg`; adds RSA-PKCS1v15-SHA256 and Ed25519 alongside ES256 |
+| [0011](./0011-org-display-name-slug.md) | Organization display name + slug (v0.2 — Proposed) | Adds optional `name` and `slug` to `Organization`; new `updateOrg` operation; closes spec#6 |
 
 ## Writing a new ADR
 

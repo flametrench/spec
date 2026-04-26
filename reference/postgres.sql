@@ -589,6 +589,31 @@ ALTER TABLE ses ADD CONSTRAINT ses_mfa_verified_after_created
     CHECK (mfa_verified_at IS NULL OR mfa_verified_at >= created_at);
 
 -- ===========================================================================
+-- v0.2 additions: org display name + slug per ADR 0011 (Proposed)
+-- ===========================================================================
+--
+-- Two nullable columns on org. `name` is free-form; `slug` is
+-- DNS-label-shaped and globally unique when set.
+--
+-- The slug pattern matches `^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`:
+-- 1-63 lowercase ASCII chars or digits or hyphens, no leading/trailing
+-- hyphen. The CHECK enforces the format; a partial unique index
+-- enforces uniqueness only over non-NULL values, so multiple orgs
+-- without a slug coexist.
+
+ALTER TABLE org ADD COLUMN name TEXT;
+ALTER TABLE org ADD COLUMN slug TEXT;
+
+ALTER TABLE org ADD CONSTRAINT org_slug_format
+    CHECK (
+        slug IS NULL
+        OR slug ~ '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
+    );
+
+CREATE UNIQUE INDEX org_slug_unique ON org (slug)
+    WHERE slug IS NOT NULL;
+
+-- ===========================================================================
 -- v0.2 note: rewrite rules (ADR 0007)
 -- ===========================================================================
 --
