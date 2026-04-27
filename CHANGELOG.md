@@ -2,6 +2,15 @@
 
 All notable spec changes are recorded here. Adopter-facing migration guidance lives in [`docs/migrating-to-v0.2.md`](docs/migrating-to-v0.2.md). Per-SDK changelogs live in their respective repos; this file tracks the spec contract only.
 
+## [v0.2.0-rc.3] — 2026-04-27
+
+### Added
+- **ADR 0012** — share tokens for time-bounded resource access. New `shr_` ID prefix; new `shr` table in the reference Postgres schema; new `ShareStore` interface in the authz package across all four SDKs. Closes [`spec#7`](https://github.com/flametrench/spec/issues/7) reported by the `sitesource/admin` adopter (Phase 3.0a iter 1 file-manager shareable links). Token storage matches `ses` (SHA-256 → 32 bytes BYTEA, constant-time compare); `expires_at` capped at 365 days; optional `single_use` with transactional `consumed_at` on verify.
+- New normative doc [`docs/shares.md`](docs/shares.md) covering when to use shares vs. tuples vs. sessions, the verification ordering, error precedence, and security considerations.
+
+### Bumped
+- `authz-{python,node,php,java}` to `v0.2.0-rc.3` / `0.2.0rc3` to ship the new `ShareStore`. `identity` and `tenancy` SDKs are unchanged at their respective rc.4 levels.
+
 ## [v0.2.0-rc.2] — 2026-04-26
 
 ### Added

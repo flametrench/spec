@@ -99,7 +99,8 @@ flametrench/spec/
 │   ├── ids.md                   ID format (normative)
 │   ├── identity.md              identity capability (normative)
 │   ├── tenancy.md               tenancy capability (normative)
-│   └── authorization.md         authorization capability (normative)
+│   ├── authorization.md         authorization capability (normative)
+│   └── shares.md                share tokens (v0.2; ADR 0012)
 ├── decisions/                   Architecture Decision Records (10 ADRs)
 │   ├── README.md                index + ADR writing guide
 │   ├── 0001 — authorization model

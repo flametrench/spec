@@ -56,25 +56,26 @@ Consistent casing guarantees byte-identical encodings across SDKs and simplifies
 
 ## Type prefix registry
 
-The following type prefixes are reserved for Flametrench v0.1:
+The following type prefixes are reserved for Flametrench v0.1 / v0.2:
 
-| Prefix | Resource                | Capability     |
-| ------ | ----------------------- | -------------- |
-| `usr`  | User                    | Identity       |
-| `ses`  | Session                 | Identity       |
-| `cred` | Credential              | Identity       |
-| `org`  | Organization            | Tenancy        |
-| `mem`  | Membership              | Tenancy        |
-| `inv`  | Invitation              | Tenancy        |
-| `tup`  | Authorization tuple     | Authorization  |
+| Prefix | Resource                | Capability                               |
+| ------ | ----------------------- | ---------------------------------------- |
+| `usr`  | User                    | Identity                                 |
+| `ses`  | Session                 | Identity                                 |
+| `cred` | Credential              | Identity                                 |
+| `mfa`  | Multi-factor factor     | Identity (v0.2; ADR 0008)                |
+| `org`  | Organization            | Tenancy                                  |
+| `mem`  | Membership              | Tenancy                                  |
+| `inv`  | Invitation              | Tenancy                                  |
+| `tup`  | Authorization tuple     | Authorization                            |
+| `shr`  | Share token             | Authorization (v0.2; ADR 0012)           |
 
 Implementations MUST NOT invent new type prefixes. New prefixes are added by amending this document through the specification's change process.
 
-Reserved prefixes for future capabilities (not usable in v0.1 implementations):
+Reserved prefixes for future capabilities (not usable in v0.2 implementations):
 
 | Prefix  | Planned resource        | Capability      | Status        |
 | ------- | ----------------------- | --------------- | ------------- |
-| `mfa`   | Multi-factor factor     | Identity (v0.2) | Proposed (ADR 0008) |
 | `aud`   | Audit event             | Audit           | Reserved      |
 | `not`   | Notification            | Notifications   | Reserved      |
 | `file`  | File                    | Files           | Reserved      |
