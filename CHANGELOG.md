@@ -2,6 +2,17 @@
 
 All notable spec changes are recorded here. Adopter-facing migration guidance lives in [`docs/migrating-to-v0.2.md`](docs/migrating-to-v0.2.md). Per-SDK changelogs live in their respective repos; this file tracks the spec contract only.
 
+## [v0.2.0-rc.4] — 2026-04-27
+
+### Clarified
+- `object_id` accepts wire-format prefixed IDs (`<prefix>_<32hex>`) at the Postgres adapter boundary across all four SDKs, in addition to bare 32-hex and canonical hyphenated UUIDs. ADR 0001 already states `object_type` is application-defined; this aligns the adapter implementations with that contract by routing prefixed forms through `decodeAny` rather than the strict `decode`. Closes [`spec#8`](https://github.com/flametrench/spec/issues/8) reported by the `sitesource/admin` adopter.
+- No conformance-fixture changes. Read-side symmetry (encoding `object_id` back to its app-defined wire format on row mapping) is left as a deferred design discussion.
+
+### Bumped
+- `authz-{node,php,python,java}` to `v0.2.0-rc.4` / `0.2.0rc4`.
+- `tenancy-{node,php,python,java}` to `v0.2.0-rc.5` / `0.2.0rc5`.
+- `identity` and `ids` SDKs unchanged.
+
 ## [v0.2.0-rc.3] — 2026-04-27
 
 ### Added
