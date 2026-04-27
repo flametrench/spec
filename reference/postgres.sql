@@ -657,11 +657,23 @@ CREATE TABLE shr (
     CHECK (expires_at <= created_at + INTERVAL '365 days')
 );
 
--- Token lookup hot path. Partial-unique index excludes consumed/revoked
--- rows so the same token_hash slot may be re-used historically; live
--- (still-verifiable) hashes are unique.
-CREATE UNIQUE INDEX shr_token_hash_idx ON shr (token_hash)
+-- Two indexes on token_hash by design:
+--
+-- (1) The partial-unique index enforces "no two ACTIVE shares share a
+--     token hash" — the property that matters for security. Consumed and
+--     revoked rows are excluded so a re-issued token (after a 256-bit
+--     entropy collision, vanishingly unlikely but not impossible) is not
+--     blocked by a defunct row.
+CREATE UNIQUE INDEX shr_token_hash_active_idx ON shr (token_hash)
     WHERE revoked_at IS NULL AND consumed_at IS NULL;
+-- (2) The non-partial index serves the verify hot path: lookups need to
+--     find consumed / revoked / expired rows so the SDK can return the
+--     correct error class (ShareRevokedError vs ShareConsumedError vs
+--     ShareExpiredError vs InvalidShareTokenError) per ADR 0012's spec
+--     ordering. A query `SELECT … WHERE token_hash = $1` cannot use the
+--     partial index above without also matching its predicate, so a
+--     plain index is required.
+CREATE INDEX shr_token_hash_idx ON shr (token_hash);
 
 -- "Show me all shares minted on this resource" — the listSharesForObject
 -- enumeration path.
