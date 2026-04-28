@@ -32,7 +32,7 @@ Flametrench v0.1 covers three capabilities. Detailed specs live in [`docs/identi
 
 ## What v0.2 adds (Proposed; release-candidate)
 
-v0.2 is feature-complete in source and tagged across the four SDK families as `v0.2.0-rc.2`. The work splits across two ADRs and one backport:
+v0.2 is feature-complete in source and tagged across the four SDK families as `v0.2.0-rc.{4,5}`. The work splits across four ADRs and one backport:
 
 **Authorization rewrite rules (ADR 0007).** A subset of Zanzibar's `userset_rewrite`: the three node types `this`, `computed_userset`, and `tuple_to_userset`, composed via union. Cycle detection and depth/fan-out bounds (8 / 1024). Rules ride on top of v0.1's exact-match `check()` — when no rules are registered, behavior is byte-identical to v0.1.
 
@@ -46,7 +46,11 @@ Per-user enforcement via `usr_mfa_policy` (with grace window for rollout). `veri
 
 **Invitation acceptance binding (ADR 0009).** Closes a privilege-escalation primitive in v0.1 where any authenticated user could accept an admin-targeted invitation. Backported into v0.1.x; `acceptInvitation` now requires `accepting_identifier` to byte-match `invitation.identifier` when the caller asserts an existing `usr_id`.
 
-Everything else — audit logs, notifications, file handling, billing hooks, feature flags — is explicitly out of scope for v0.1 and arrives in later versions. Shipping narrow is the point.
+**Share tokens (ADR 0012).** A new `shr_` ID prefix and `ShareStore` interface for time-bounded, presentation-bearer access to a single resource without minting an authenticated principal. Token storage matches sessions (SHA-256 → 32 bytes BYTEA, constant-time compare); `expires_at` capped at 365 days; optional `single_use` semantics with transactional consume on first verify.
+
+**Postgres-backed reference adapters.** `PostgresIdentityStore`, `PostgresTenancyStore`, `PostgresTupleStore`, and `PostgresShareStore` now ship in every SDK family alongside the in-memory reference stores, mirroring in-memory semantics byte-for-byte at the SDK boundary. Postgres-backed rewrite-rule evaluation remains deferred — the in-memory store is the rules-enabled path in v0.2.
+
+Everything else — audit logs, notifications, file handling, billing hooks, feature flags, magic-link credentials — is out of scope for v0.2 and arrives in later versions. Shipping narrow is the point.
 
 ## SDK families
 
@@ -61,7 +65,7 @@ Flametrench ships four first-party SDK families, all conforming to the same fixt
 
 A framework adapter for Laravel ([`flametrench/laravel`](https://github.com/flametrench/laravel)) layers on top of the PHP SDK family.
 
-A conformance test suite lives alongside the specification (24 fixture files at v0.2.0-rc.2). SDKs claim compliance by running the fixtures against themselves; cross-language parity is enforced by the same fixtures consumed by all four families.
+A conformance test suite lives alongside the specification (25 fixture files spanning v0.1.0 and v0.2.0). SDKs claim compliance by running the fixtures against themselves; cross-language parity is enforced by the same fixtures consumed by all four families.
 
 ## What this specification defines
 
@@ -80,11 +84,11 @@ What this specification does not define:
 
 ## Status
 
-- **v0.1 spec**: feature-complete in source. Adopted by sitesource/admin (the first PHP adopter); spec#5 surfaced in adoption and was patched in v0.1.x via ADR 0009.
-- **v0.2 spec**: tagged `v0.2.0-rc.2`. Locks the surface (rewrite rules + MFA TOTP/WebAuthn/recovery + WebAuthn ES256/RS256/EdDSA) for adopter validation before final.
-- **SDKs**: Python / Node / PHP / Java each tagged `v0.2.0-rc.2` for `identity` (which carries the WebAuthn algorithm extensions); `ids` and `authz` tagged `v0.2.0-rc.1`. Tenancy tagged `v0.1.1` (security patch for ADR 0009).
-- **Postgres reference**: `postgres.sql` covers the full v0.1 + v0.2 data model. `postgres-rls.sql` is an optional RLS companion.
-- **Conformance suite**: 24 fixture files, executed by all four SDK families.
+- **v0.1 spec**: shipped. Adopted by sitesource/admin (the first PHP adopter); spec#5 surfaced in adoption and was patched in v0.1.x via ADR 0009.
+- **v0.2 spec**: release-candidate, tagged `v0.2.0-rc.4`. Locks the surface (rewrite rules + MFA TOTP/WebAuthn/recovery + WebAuthn ES256/RS256/EdDSA + share tokens + Postgres reference adapters) for adopter validation before final. Two adopter-driven patches landed during the RC cycle: spec#7 (share tokens, closed in rc.3) and spec#8 (wire-format `object_id` acceptance in Postgres adapters, closed in rc.4).
+- **SDKs**: Python / Node / PHP / Java each tagged at `v0.2.0-rc.x` across the family. Current versions: `ids@v0.2.0-rc.{2,3}`, `authz@v0.2.0-rc.4`, `tenancy@v0.2.0-rc.5`, `identity@v0.2.0-rc.4`. Channels live: npm and Packagist; PyPI and Maven Central are bootstrapping.
+- **Postgres reference**: `postgres.sql` covers the full v0.1 + v0.2 data model (including the `mfa`, `usr_mfa_policy`, and `shr` tables added in v0.2). `postgres-rls.sql` is an optional RLS companion.
+- **Conformance suite**: 25 fixture files, executed by all four SDK families.
 
 The release-candidate is the right time to integrate, file issues, and shape the v0.2 final. Nothing in flametrench is pinned for production until v0.2 final ships.
 
@@ -132,12 +136,12 @@ flametrench/spec/
 
 - Watch this repository for specification changes.
 - Watch the SDK repositories for implementation progress.
-- Join GitHub Discussions (once v0.1 stabilizes) for design conversations.
+- Join GitHub Discussions (opening once v0.2 stabilizes) for design conversations.
 - Read the commit history — specification work is happening in the open, with reasoning in commit messages where it matters.
 
 ## Contributing
 
-The specification is still in draft and the surface area is small, so direct contributions are limited until v0.1 stabilizes. What helps most right now:
+The specification is in v0.2 release-candidate and the surface area is small, so direct contributions are limited until v0.2 final ships. What helps most right now:
 
 - **Questions and challenges.** If something in the specification looks wrong, unclear, or underdefined, open an issue. Early feedback has disproportionate impact.
 - **Prior art pointers.** If you know of a project that has solved one of these problems well, we want to learn from it.

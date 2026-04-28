@@ -31,11 +31,11 @@ The OpenAPI is designed to pass through standard code generators (openapi-genera
 
 Every operation listed in the `docs/*.md` chapters has a corresponding path in the OpenAPI. Pagination uses cursor-based, UUIDv7-ordered cursors; error responses share a common `Error` schema with a `code` field for stable, machine-readable error identifiers.
 
-## What's NOT in v0.1 (deferred to v0.2+)
+## What's deferred (not yet in OpenAPI)
 
-- Rewrite rules / derived authorization (would add new endpoints around policy definitions).
+- Rewrite-rule **HTTP surface** for authorization (the SDK ships rewrite rules in v0.2 via the in-memory store; declarative HTTP definition of rules is deferred).
+- Share-token **HTTP surface** (the SDK ships the `ShareStore` interface in v0.2 across all four families; HTTP routes for mint/verify/revoke are deferred to a later version).
 - Group-subject tuples (`grp_` as a subject type).
-- ~~MFA-specific operations~~ — landed in v0.2; see `flametrench-v0.2-additions.yaml`.
 - SAML / magic-link credentials.
 - Batch operations and subscription/webhook endpoints.
 
