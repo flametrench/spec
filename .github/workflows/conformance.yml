@@ -5,11 +5,18 @@ on:
     branches: [main]
     paths:
       - 'conformance/**'
+      - 'openapi/**'
       - '.github/workflows/conformance.yml'
   pull_request:
     branches: [main]
     paths:
       - 'conformance/**'
+      - 'openapi/**'
+  schedule:
+    # Sunday 06:00 UTC. Catches SDK drift even when neither side pushed
+    # this week — the conformance posture should remain green at rest.
+    - cron: '0 6 * * 0'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -59,3 +66,224 @@ jobs:
       - name: Lint OpenAPI
         run: |
           npx -y --package=@redocly/cli@latest redocly lint openapi/flametrench-v0.1.yaml
+
+  # ─── Cross-SDK conformance matrix ────────────────────────────────────
+  # Each language family runs its conformance test against THIS spec
+  # repo's fixtures (overlaid into the SDK's vendored copy at the start
+  # of the job). A green matrix means all four SDKs pass the live
+  # spec — not just their snapshot at SDK release time.
+
+  sdk-node:
+    name: Node SDKs · conformance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout spec
+        uses: actions/checkout@v4
+        with:
+          path: spec
+
+      - name: Checkout flametrench/node
+        uses: actions/checkout@v4
+        with:
+          repository: flametrench/node
+          path: sdk
+
+      - name: Overlay live spec fixtures
+        run: |
+          # ids fixtures
+          rm -rf sdk/packages/ids/test/conformance/fixtures/ids
+          cp -R spec/conformance/fixtures/ids sdk/packages/ids/test/conformance/fixtures/ids
+          # tenancy schema (used by tenancy postgres tests)
+          cp spec/reference/postgres.sql sdk/packages/tenancy/test/postgres-schema.sql
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: sdk/pnpm-lock.yaml
+
+      - name: Install
+        working-directory: sdk
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (workspace)
+        working-directory: sdk
+        run: pnpm -r build
+
+      - name: Run conformance tests
+        working-directory: sdk
+        run: |
+          pnpm --filter @flametrench/ids exec vitest run conformance
+          pnpm --filter @flametrench/identity exec vitest run conformance
+          pnpm --filter @flametrench/tenancy exec vitest run conformance
+          pnpm --filter @flametrench/authz exec vitest run conformance
+
+  sdk-php:
+    name: PHP SDKs · conformance
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk: [ids-php, identity-php, tenancy-php, authz-php]
+    steps:
+      - name: Checkout spec
+        uses: actions/checkout@v4
+        with:
+          path: spec
+
+      - name: Checkout flametrench/${{ matrix.sdk }}
+        uses: actions/checkout@v4
+        with:
+          repository: flametrench/${{ matrix.sdk }}
+          path: sdk
+
+      - name: Overlay live spec fixtures
+        run: |
+          # Each SDK vendors fixtures under tests/conformance/fixtures
+          if [ -d sdk/tests/conformance/fixtures ]; then
+            for sub in ids identity tenancy authorization; do
+              if [ -d spec/conformance/fixtures/$sub ]; then
+                rm -rf sdk/tests/conformance/fixtures/$sub
+                cp -R spec/conformance/fixtures/$sub sdk/tests/conformance/fixtures/$sub
+              fi
+            done
+          fi
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: Install dependencies
+        working-directory: sdk
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Run conformance tests
+        working-directory: sdk
+        run: ./vendor/bin/pest --filter Conformance
+
+  sdk-python:
+    name: Python SDKs · conformance
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk: [ids-python, identity-python, tenancy-python, authz-python]
+    steps:
+      - name: Checkout spec
+        uses: actions/checkout@v4
+        with:
+          path: spec
+
+      - name: Checkout flametrench/${{ matrix.sdk }}
+        uses: actions/checkout@v4
+        with:
+          repository: flametrench/${{ matrix.sdk }}
+          path: sdk
+
+      - name: Checkout flametrench/ids-python
+        # ids-python is the upstream dep for the other Python SDKs;
+        # bootstrap it from the sibling repo until v0.2.x is on PyPI.
+        if: matrix.sdk != 'ids-python'
+        uses: actions/checkout@v4
+        with:
+          repository: flametrench/ids-python
+          ref: v0.2.0rc3
+          path: _vendored/ids-python
+
+      - name: Overlay live spec fixtures
+        run: |
+          if [ -d sdk/tests/conformance/fixtures ]; then
+            for sub in ids identity tenancy authorization; do
+              if [ -d spec/conformance/fixtures/$sub ]; then
+                rm -rf sdk/tests/conformance/fixtures/$sub
+                cp -R spec/conformance/fixtures/$sub sdk/tests/conformance/fixtures/$sub
+              fi
+            done
+          fi
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install ids dep (siblings only)
+        if: matrix.sdk != 'ids-python'
+        run: pip install ./_vendored/ids-python
+
+      - name: Install package
+        working-directory: sdk
+        run: pip install -e '.[dev]'
+
+      - name: Run conformance tests
+        working-directory: sdk
+        run: pytest -q tests/test_conformance.py
+
+  sdk-java:
+    name: Java SDKs · conformance
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - sdk: ids-java
+            ids_ref: v0.2.0-rc.2
+          - sdk: identity-java
+            ids_ref: v0.2.0-rc.1
+          - sdk: tenancy-java
+            ids_ref: v0.1.0
+          - sdk: authz-java
+            ids_ref: v0.2.0-rc.2
+    steps:
+      - name: Checkout spec
+        uses: actions/checkout@v4
+        with:
+          path: spec
+
+      - name: Checkout flametrench/${{ matrix.sdk }}
+        uses: actions/checkout@v4
+        with:
+          repository: flametrench/${{ matrix.sdk }}
+          path: sdk
+
+      - name: Checkout flametrench/ids-java
+        if: matrix.sdk != 'ids-java'
+        uses: actions/checkout@v4
+        with:
+          repository: flametrench/ids-java
+          ref: ${{ matrix.ids_ref }}
+          path: _vendored/ids-java
+
+      - name: Overlay live spec fixtures
+        run: |
+          if [ -d sdk/src/test/resources/conformance/fixtures ]; then
+            for sub in ids identity tenancy authorization; do
+              if [ -d spec/conformance/fixtures/$sub ]; then
+                rm -rf sdk/src/test/resources/conformance/fixtures/$sub
+                cp -R spec/conformance/fixtures/$sub sdk/src/test/resources/conformance/fixtures/$sub
+              fi
+            done
+          fi
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'maven'
+
+      - name: Install ids dep (siblings only)
+        if: matrix.sdk != 'ids-java'
+        run: mvn -B -f _vendored/ids-java/pom.xml install -DskipTests
+
+      - name: Run conformance tests
+        working-directory: sdk
+        run: mvn -B test -Dtest=ConformanceTest
