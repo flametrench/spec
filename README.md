@@ -107,6 +107,7 @@ flametrench/spec/
 │   ├── tenancy.md               tenancy capability (normative)
 │   ├── authorization.md         authorization capability (normative)
 │   ├── shares.md                share tokens (v0.2; ADR 0012)
+│   ├── security.md              threat model + adopter responsibilities (normative)
 │   ├── external-idps.md         coexistence with Auth0 / Clerk / Cognito / etc. (non-normative)
 │   └── migrating-to-v0.2.md     upgrade guide for v0.1 adopters
 ├── decisions/                   Architecture Decision Records (10 ADRs)
