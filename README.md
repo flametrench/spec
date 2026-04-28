@@ -1,5 +1,7 @@
 # Flametrench
 
+[![Conformance](https://github.com/flametrench/spec/actions/workflows/conformance.yml/badge.svg)](https://github.com/flametrench/spec/actions/workflows/conformance.yml)
+
 **An open specification for the load-bearing parts of every application.**
 
 Identity. Tenancy. Authorization. Every application needs them. Every team rebuilds them. Flametrench is the contract that lets you stop.
