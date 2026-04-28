@@ -2,6 +2,19 @@
 
 All notable spec changes are recorded here. Adopter-facing migration guidance lives in [`docs/migrating-to-v0.2.md`](docs/migrating-to-v0.2.md). Per-SDK changelogs live in their respective repos; this file tracks the spec contract only.
 
+## [v0.2.0-rc.5] — 2026-04-27
+
+### Added
+- New normative document [`docs/security.md`](docs/security.md) — unified threat model. Covers attacker classes, trust boundaries, per-primitive security claims, known gaps and explicit non-goals, and adopter responsibilities.
+- New non-normative document [`docs/external-idps.md`](docs/external-idps.md) — coexistence patterns for adopters already on Auth0/Clerk/Cognito/Okta/WorkOS/Entra. Concrete Auth0 → Flametrench bridge example.
+
+### Fixed (security posture)
+- `verifyPassword` MUST consult `usr_mfa_policy` and surface `mfa_required = true` on the `VerifiedCredential` return when policy is active and the grace window has elapsed. The OpenAPI README has stated this since rc.1, but the four SDK families did not implement it through rc.4 — the policy table was decorative. Adopters configuring per-user MFA enforcement could be bypassed by applications that called `createSession` directly without consulting the policy. All four SDKs (Node / PHP / Python / Java) now implement the gate; the field is additive and defaults to `false`. Identity SDKs bumped to v0.2.0-rc.5.
+
+### Bumped
+- `identity-{node,php,python,java}` to v0.2.0-rc.5.
+- `ids` and `authz` and `tenancy` SDKs unchanged.
+
 ## [v0.2.0-rc.4] — 2026-04-27
 
 ### Clarified

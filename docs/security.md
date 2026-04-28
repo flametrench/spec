@@ -64,10 +64,10 @@ Numbered from outside-in:
 
 ### `mfa_` — MFA factor (v0.2)
 
-- **TOTP secrets are Argon2id-hashed at rest.** The plaintext secret is returned exactly once at enrollment for QR provisioning; the database stores only a hash that the SDK verifies against.
-- **Recovery codes are single-use AND Argon2id-hashed.** A consumed code is marked consumed atomically; concurrent attempts to consume the same code race correctly to one success.
+- **TOTP secrets are stored as raw bytes** in `mfa.totp_secret BYTEA`. They cannot be Argon2id-hashed because TOTP verification requires the symmetric secret to compute the expected code. Implementations SHOULD encrypt this column at rest using application-layer encryption (`pgcrypto.pgp_sym_encrypt` with an app-held key, or an external KMS). The SDK does not enforce this — column-level encryption is the adopter's responsibility, called out explicitly here so it isn't missed. The plaintext secret is returned exactly once at enrollment for QR provisioning; subsequent `verifyMfa` calls only see the code, not the secret.
+- **Recovery codes are single-use AND Argon2id-hashed.** A consumed code is marked consumed atomically (`UPDATE … WHERE consumed = false RETURNING …`); concurrent attempts to consume the same code race correctly to one success.
 - **WebAuthn assertion verification enforces signCount monotonicity.** A counter that decreases between assertions is treated as cloned-authenticator evidence and the assertion fails.
-- **Per-user policy with grace window.** `usr_mfa_policy` carries a `grace_until` timestamp. After the grace window, `verifyPassword` returns `mfa_required: true` and the application MUST call `verifyMfa` before `createSession`. Sessions minted without going through the policy gate are non-conformant.
+- **Per-user policy with grace window.** `usr_mfa_policy` carries a `grace_until` timestamp. After the grace window, `verifyPassword` returns `VerifiedCredential` with `mfa_required = true` (additive field; `false` when no policy is active or when the grace window hasn't elapsed). The application MUST call `verifyMfa` before `createSession` when `mfa_required` is true. Adopters who do not configure a policy see `mfa_required = false` always, with no behavioral change. The SDK does not block `createSession` itself when `mfa_required` is true — that gate is the application's responsibility, since the policy decision (e.g., "warn for grace, hard-fail after") varies by deployment.
 
 ### `org_` / `mem_` / `inv_` — Tenancy
 
