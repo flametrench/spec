@@ -2,7 +2,7 @@
 
 Flametrench tenancy covers how organizations are structured, how users join them, how membership role changes are recorded, and how memberships are removed.
 
-Three entities comprise tenancy in v0.1:
+Three entities comprise tenancy:
 
 - **`org_`** — an organization: a unit of tenancy. A company, a team, a workspace.
 - **`mem_`** — a membership: a user's participation in an org, carrying a role and lifecycle metadata.
@@ -24,7 +24,7 @@ This chapter is normative. Rationale lives in [ADR 0002 — Tenancy model](../de
 
 ### Flat hierarchy
 
-v0.1 supports only flat orgs: an `org_` has no parent org. Modeling divisions or sub-teams is done either outside the spec (application-level structure) or in v0.2+ when rewrite rules land and cross-org inheritance becomes safe to derive.
+Orgs are flat: an `org_` has no parent org. Modeling divisions or sub-teams is done either outside the spec (application-level structure) or via v0.2 rewrite rules ([ADR 0007](../decisions/0007-authorization-rewrite-rules.md)) where cross-org inheritance becomes safe to derive declaratively. Nested orgs as a first-class primitive remain deferred.
 
 ### Lifecycle
 

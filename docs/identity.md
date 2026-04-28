@@ -2,7 +2,7 @@
 
 Flametrench identity covers how a user is represented, how they authenticate, and how authenticated sessions are tracked.
 
-Three entities make up identity in v0.1:
+Three entities make up identity:
 
 - **`usr_`** — a user: the human or service principal whose identity is being managed.
 - **`cred_`** — a credential: one specific way the user can prove they are the user.
@@ -71,7 +71,7 @@ A credential carries:
 - Type-specific payload (below).
 - `created_at`, `updated_at`.
 
-### Credential types in v0.1
+### Credential types
 
 #### Password
 
@@ -299,7 +299,7 @@ The same pattern applies to other host languages and frameworks; the key invaria
 - The credential mint and the legacy-column delete are in one transaction.
 - After rotation, the legacy verifier is unreachable for that user; the SDK's `verifyPassword` is the single source of truth.
 
-### Bulk migration is out of scope for v0.1
+### Bulk migration is out of scope
 
 The spec deliberately does not define a one-shot bulk re-hash tool, because plaintext is unrecoverable and any "bulk migrate" path requires either forcing all users to reset their passwords or keeping legacy verifiers permanently. Hosts choose their policy.
 
@@ -311,23 +311,13 @@ In v0.1, Flametrench SDKs MUST NOT:
 - Expose a hook that lets `verifyPassword` consult host-provided legacy verifiers automatically.
 - Accept a non-Argon2id PHC string into `createPasswordCredential` even with explicit override flags.
 
-A pluggable `LegacyPasswordVerifier` interface MAY be introduced in v0.2+ if multiple adopters request it with consistent requirements. Hosts adopting v0.1 today are not blocked by its absence; the verify-then-rotate pattern above is correct and complete.
+A pluggable `LegacyPasswordVerifier` interface MAY be introduced in a future spec version if multiple adopters request it with consistent requirements. Hosts adopting today are not blocked by its absence; the verify-then-rotate pattern above is correct and complete.
 
-## Multi-factor authentication (v0.1 deferred; v0.2 brings it in)
+## Multi-factor authentication
 
-Flametrench v0.1 does NOT specify MFA. See [ADR 0004](../decisions/0004-identity-model.md) for rationale.
+v0.1 did NOT specify MFA — see [ADR 0004](../decisions/0004-identity-model.md) for rationale. v0.1 applications could layer MFA on by maintaining multiple credentials per user and requiring verification of a second credential before calling `createSession`; the resulting session's `cred_id` recorded the primary credential.
 
-Applications that need MFA in v0.1 can layer it on:
-
-- Maintain multiple credentials per user (e.g., one password credential and one passkey credential).
-- Require verification of a second credential before calling `createSession`.
-- The resulting session's `cred_id` records the primary credential that established it.
-
-v0.2 introduces first-class MFA per [ADR 0008](../decisions/0008-mfa.md) — preview below.
-
-## Multi-factor authentication (v0.2 — Proposed)
-
-This section is a preview of v0.2 functionality and is **non-normative until v0.2 is released**. The design is locked in [ADR 0008](../decisions/0008-mfa.md); SDK implementations follow the v0.2 release tag.
+v0.2 introduces first-class MFA per [ADR 0008](../decisions/0008-mfa.md) and [ADR 0010](../decisions/0010-webauthn-rs256-eddsa.md). All four SDK families ship the implementation in their v0.2 release-candidate.
 
 ### Three first-class factor types
 

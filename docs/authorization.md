@@ -80,23 +80,23 @@ Returns `true` if a tuple exists for `subject` on `object` with any of the liste
 
 Implementations MUST accept both forms. The relation set in the set-form MUST be non-empty.
 
-### Exact-match semantics
+### Exact-match semantics (default)
 
-v0.1 performs EXACT match only. There is:
+The default `check()` performs EXACT match only. There is:
 
-- **No relation implication.** `admin` does not imply `editor`. `editor` does not imply `viewer`.
-- **No parent-child inheritance.** `viewer` of `org_acme` does not imply `viewer` of any project in `org_acme`.
-- **No group expansion.** v0.1 has no `grp_` subject type.
+- **No implicit relation implication.** `admin` does not imply `editor`. `editor` does not imply `viewer`.
+- **No implicit parent-child inheritance.** `viewer` of `org_acme` does not imply `viewer` of any project in `org_acme`.
+- **No group expansion.** Group subjects (`grp_`) remain deferred.
 
-If an application's authorization policy requires any of these derivations, the application is responsible for them — either by materializing the implied tuples at state-change time, or by constructing appropriate relation sets at check time.
+If an application's authorization policy requires any of these derivations, three options:
 
-### Deferred: rewrite rules
+- Materialize the implied tuples at state-change time.
+- Construct an appropriate relation set at check time and pass it to the set-form `check()`.
+- **Opt into v0.2 rewrite rules** (below) — declarative role implication and parent-child inheritance with depth and fan-out caps.
 
-Rewrite rules (declarative derivation) are deferred to v0.2+. See [ADR 0001](../decisions/0001-authorization-model.md) for rationale. The v0.1 tuple primitive is forward-compatible with every candidate rewrite-rule system considered.
+## Rewrite rules (v0.2)
 
-## Rewrite rules (v0.2 — Proposed)
-
-This section is a preview of v0.2 functionality and is **non-normative until v0.2 is released**. The design is locked in [ADR 0007](../decisions/0007-authorization-rewrite-rules.md) and a reference implementation ships in `flametrench-authz` (Python) today; the full design becomes Accepted alongside the v0.2 spec tag.
+The design is normative as of v0.2 and is locked in [ADR 0007](../decisions/0007-authorization-rewrite-rules.md). All four SDK families ship in-memory rewrite-rule support in their v0.2 release-candidate. Postgres-backed rule evaluation is deferred to v0.3 — adopters who need Postgres durability today can keep the rules-relevant tuple subset in-memory and use the in-memory `check()` for those queries.
 
 ### Why
 

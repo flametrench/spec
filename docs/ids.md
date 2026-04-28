@@ -56,7 +56,7 @@ Consistent casing guarantees byte-identical encodings across SDKs and simplifies
 
 ## Type prefix registry
 
-The following type prefixes are reserved for Flametrench v0.1 / v0.2:
+The following type prefixes are reserved by the current specification (v0.2):
 
 | Prefix | Resource                | Capability                               |
 | ------ | ----------------------- | ---------------------------------------- |
