@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Flametrench v0.2 — additions
-  version: 0.2.0-rc.3
+  version: 0.2.0-rc.6
   summary: |
     Wire-surface additions for v0.2: MFA enrollment + verification, MFA
     policy CRUD, organization display name + slug (ADR 0011), user

@@ -87,10 +87,10 @@ What this specification does not define:
 ## Status
 
 - **v0.1 spec**: shipped. Adopted by sitesource/admin (the first PHP adopter); spec#5 surfaced in adoption and was patched in v0.1.x via ADR 0009.
-- **v0.2 spec**: release-candidate, tagged `v0.2.0-rc.4`. Locks the surface (rewrite rules + MFA TOTP/WebAuthn/recovery + WebAuthn ES256/RS256/EdDSA + share tokens + Postgres reference adapters) for adopter validation before final. Two adopter-driven patches landed during the RC cycle: spec#7 (share tokens, closed in rc.3) and spec#8 (wire-format `object_id` acceptance in Postgres adapters, closed in rc.4).
-- **SDKs**: Python / Node / PHP / Java each tagged at `v0.2.0-rc.x` across the family. Current versions: `ids@v0.2.0-rc.{2,3}`, `authz@v0.2.0-rc.4`, `tenancy@v0.2.0-rc.5`, `identity@v0.2.0-rc.4`. Channels live: npm and Packagist; PyPI and Maven Central are bootstrapping.
-- **Postgres reference**: `postgres.sql` covers the full v0.1 + v0.2 data model (including the `mfa`, `usr_mfa_policy`, and `shr` tables added in v0.2). `postgres-rls.sql` is an optional RLS companion.
-- **Conformance suite**: 25 fixture files, executed by all four SDK families.
+- **v0.2 spec**: release-candidate, tagged `v0.2.0-rc.6`. Locks the surface (rewrite rules + MFA TOTP/WebAuthn/recovery + WebAuthn ES256/RS256/EdDSA + share tokens + Postgres reference adapters + threat model + Postgres adapter transaction nesting + user display name + user enumeration) for adopter validation before final. Adopter-driven patches across the RC cycle: spec#7 (share tokens, rc.3), spec#8 (wire-format `object_id` acceptance, rc.4), spec#9 (user display name, rc.6), spec#10 (`listUsers`, rc.6), and laravel#1 (Postgres adapter transaction nesting, rc.6).
+- **SDKs**: Python / Node / PHP / Java each tagged at `v0.2.0-rc.x` across the family. Current versions: `ids@v0.2.0-rc.{2,3}`, `authz@v0.2.0-rc.{4,5}` (PHP rc.5; others rc.4), `tenancy@v0.2.0-rc.{5,6}` (PHP rc.6; others rc.5), `identity@v0.2.0-rc.6`. Packagist tracks tags directly. npm publishing currently lags local manifests; PyPI and Maven Central are bootstrapping (org / credential approvals pending). Always verify the registry directly (e.g. `npm view @flametrench/<pkg> version`) before depending on a specific version.
+- **Postgres reference**: `postgres.sql` covers the full v0.1 + v0.2 data model (including the `mfa`, `usr_mfa_policy`, and `shr` tables added in v0.2; `usr.display_name` added in rc.6). `postgres-rls.sql` is an optional RLS companion.
+- **Conformance suite**: 27 fixture files, executed by all four SDK families.
 
 The release-candidate is the right time to integrate, file issues, and shape the v0.2 final. Nothing in flametrench is pinned for production until v0.2 final ships.
 

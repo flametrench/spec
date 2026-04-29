@@ -2,6 +2,31 @@
 
 All notable spec changes are recorded here. Adopter-facing migration guidance lives in [`docs/migrating-to-v0.2.md`](docs/migrating-to-v0.2.md). Per-SDK changelogs live in their respective repos; this file tracks the spec contract only.
 
+## [v0.2.0-rc.6] — 2026-04-28
+
+### Added
+- **ADR 0013** — Postgres adapter transaction nesting. Adapters detect an active outer transaction and use `SAVEPOINT/RELEASE` instead of `BEGIN/COMMIT`, enabling adopters to wrap multiple SDK calls in one atomic outer transaction (e.g. `DB::transaction(...)`). Savepoint name follows `ft_<method>_<random>` so pairing bugs surface as Postgres errors instead of silent half-commits. Closes [`flametrench/laravel#1`](https://github.com/flametrench/laravel/issues/1) reported by the `sitesource/admin` adopter (install-bootstrap atomicity). Cross-SDK rollout for Node/Python/Java tracked in [`spec#11`](https://github.com/flametrench/spec/issues/11).
+- **ADR 0014** — User display name. Optional `display_name` field on the `User` entity (TEXT, nullable, no length cap, no normalization, no uniqueness). New `updateUser` operation with the same omitted-vs-null partial-update sentinel as `updateOrg`. `createUser` accepts the field at create time. Closes [`spec#9`](https://github.com/flametrench/spec/issues/9). Mirrors ADR 0011 for `Organization.name`.
+- **ADR 0015** — `IdentityStore.listUsers`. Cursor-paginated user enumeration mirroring `listMembers` shape. Filters: case-insensitive substring against active credential identifiers (`query`), user status (`status`). Authorization gating lives at the host route — the SDK does not enforce. Closes [`spec#10`](https://github.com/flametrench/spec/issues/10).
+- **Conformance fixtures**:
+  - `identity/user-display-name.json` (8 tests) — round-trip, partial-update sentinel, Unicode round-trip without normalization, suspended-user-allowed, revoked-user-rejected, unknown-id NotFoundError.
+  - `identity/list-users.json` (9 tests) — id-ordered enumeration, status filter, query case-insensitive substring, query skips revoked credentials, multi-page cursor walking, empty install, display_name pass-through.
+
+### Postgres reference
+- `usr.display_name TEXT NULL` column added (additive ALTER for v0.1 deployments upgrading).
+- `PostgresTupleStore.createTuple` reference logic refactored: uses `INSERT ... ON CONFLICT (natural_key) DO NOTHING RETURNING` instead of catch-and-SELECT. The old pattern was incompatible with savepoint shielding because the follow-up SELECT runs inside a transaction Postgres has aborted (SQLSTATE 25P02). The new path preserves the `DuplicateTupleException` contract without raising a statement-level error. Adopters writing their own Postgres adapter SHOULD use the same pattern.
+
+### OpenAPI
+- New `GET /v1/users` endpoint with `cursor` / `limit` / `query` / `status` query params and `UserPage` response envelope.
+- New `PUT /v1/users/{usr_id}` endpoint with `UpdateUserRequest` body.
+- `User` schema gains optional `display_name`. `createUser` request body gains optional `display_name`.
+
+### Bumped
+- `tenancy-php` to `v0.2.0-rc.6` (ADR 0013 PHP impl).
+- `identity-{node,php,python,java}` to `v0.2.0-rc.6` / `0.2.0rc6` (ADR 0013 PHP impl + ADR 0014 + ADR 0015).
+- `authz-php` to `v0.2.0-rc.5` (ADR 0013 PHP impl in `PostgresTupleStore` and `PostgresShareStore`).
+- Other SDK families pending — Node/Python/Java for ADR 0013 tracked in spec#11; tenancy and authz Node/Python/Java not yet shipped for ADR 0013.
+
 ## [v0.2.0-rc.5] — 2026-04-27
 
 ### Added
