@@ -2,6 +2,19 @@
 
 All notable spec changes are recorded here. Adopter-facing migration guidance lives in [`docs/migrating-to-v0.2.md`](docs/migrating-to-v0.2.md). Per-SDK changelogs live in their respective repos; this file tracks the spec contract only.
 
+## [v0.2.0-rc.7-equivalent] — 2026-04-29 (cross-SDK ADR 0013 rollout)
+
+No spec contract changes — all four SDK families now implement ADR 0013 (Postgres adapter transaction nesting). Per-package SDK bumps:
+
+- `@flametrench/identity` to `v0.2.0-rc.7` (Node).
+- `flametrench-identity` to `v0.2.0rc7` (Python).
+- `dev.flametrench:identity` to `v0.2.0-rc.7` (Java).
+- `flametrench-tenancy` to `v0.2.0rc6` (Python). `dev.flametrench:tenancy` to `v0.2.0-rc.6` (Java). Node tenancy unchanged at rc.5 — already cooperated correctly.
+- `flametrench-authz` to `v0.2.0rc5` (Python). `dev.flametrench:authz` to `v0.2.0-rc.5` (Java). Node authz unchanged at rc.4 — already cooperated correctly.
+- `PostgresTupleStore.createTuple` refactored across all four ecosystems to `INSERT ... ON CONFLICT (natural_key) DO NOTHING RETURNING`. The previous catch-and-SELECT pattern was incompatible with savepoint shielding because the follow-up SELECT would run inside a Postgres-aborted transaction. `DuplicateTupleError`/`DuplicateTupleException` contract preserved.
+
+Closes [`flametrench/spec#11`](https://github.com/flametrench/spec/issues/11).
+
 ## [v0.2.0-rc.6] — 2026-04-28
 
 ### Added
