@@ -5,9 +5,10 @@ info:
   version: 0.2.0-rc.3
   summary: |
     Wire-surface additions for v0.2: MFA enrollment + verification, MFA
-    policy CRUD, organization display name + slug (ADR 0011). Composes
-    additively with `flametrench-v0.1.yaml`. Use an OpenAPI bundler
-    (e.g. `swagger-cli bundle`) to merge into a single served spec.
+    policy CRUD, organization display name + slug (ADR 0011), user
+    display name (ADR 0014). Composes additively with
+    `flametrench-v0.1.yaml`. Use an OpenAPI bundler (e.g.
+    `swagger-cli bundle`) to merge into a single served spec.
   description: |
     Status: Proposed (v0.2 — release-candidate).
 
@@ -52,6 +53,40 @@ security:
   - bearerAuth: []
 
 paths:
+  # ─────────────────────── Users (v0.2 display name) ───────────────────────
+
+  /users/{usr_id}:
+    parameters:
+      - $ref: '#/components/parameters/UsrId'
+    put:
+      tags: [Users]
+      summary: Update a user's display name
+      description: |
+        Partial update per ADR 0014. An omitted field means "don't
+        change"; an explicit `null` means "set to null."
+
+        Suspended users MAY be updated. Revoked users MUST NOT — that
+        path returns 409 with `code: conflict.already_terminal`.
+      operationId: updateUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateUserRequest' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: |
+            Conflict. Common cause: user is in a terminal state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
   # ─────────────────────── Organizations (v0.2 metadata) ───────────────────────
 
   /orgs/{org_id}:
@@ -394,6 +429,25 @@ components:
         slug:
           oneOf:
             - { type: string, pattern: '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$' }
+            - type: 'null'
+
+    UpdateUserRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Partial update per ADR 0014. Spec semantics match
+        `UpdateOrgRequest`:
+
+          - An OMITTED key means "do not change this field."
+          - An explicit `null` value means "set this field to null."
+
+        At least one field MUST be present; an empty object is a
+        no-op and the server MAY return 200 with the current row OR
+        400, at deployment discretion.
+      properties:
+        display_name:
+          oneOf:
+            - { type: string }
             - type: 'null'
 
     Timestamp:

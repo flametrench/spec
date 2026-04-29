@@ -68,6 +68,10 @@ paths:
     post:
       tags: [Users]
       summary: Create a new user
+      description: |
+        Creates a new `usr_` with `status = active`. v0.2 (ADR 0014)
+        adds an optional `display_name` field; pre-v0.2 callers that
+        omit the body or send `{}` continue to work unchanged.
       operationId: createUser
       requestBody:
         required: false
@@ -76,7 +80,11 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              properties: {}
+              properties:
+                display_name:
+                  oneOf:
+                    - { type: string, description: 'Optional render string. v0.2 only.' }
+                    - type: 'null'
       responses:
         '201':
           description: User created.
@@ -1045,9 +1053,18 @@ components:
       type: object
       required: [id, status, created_at, updated_at]
       additionalProperties: false
+      description: |
+        v0.2 (ADR 0014) introduces optional `display_name`. Pre-v0.2
+        servers omit it; v0.2+ servers always include the key (with
+        `null` when unset). Clients MUST tolerate its absence on v0.1
+        deployments.
       properties:
         id:         { $ref: '#/components/schemas/UsrId' }
         status:     { $ref: '#/components/schemas/Status' }
+        display_name:
+          oneOf:
+            - { type: string, description: 'Render string. v0.2 only. Spec-permissive: no length cap, no uniqueness, no normalization.' }
+            - type: 'null'
         created_at: { $ref: '#/components/schemas/Timestamp' }
         updated_at: { $ref: '#/components/schemas/Timestamp' }
 

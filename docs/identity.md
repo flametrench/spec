@@ -18,10 +18,11 @@ A user is an **opaque identity**. The user entity carries:
 
 - `id` — UUIDv7; rendered on the wire as `usr_<hex>`.
 - `status` — one of `active`, `suspended`, `revoked`.
+- `display_name` — optional human-meaningful render string. Nullable. Spec-permissive (no length cap, no uniqueness, no normalization). Added in v0.2 per [ADR 0014](../decisions/0014-user-display-name.md). See "Display name (v0.2)" below.
 - `created_at` — timestamp of creation, timezone-aware.
 - `updated_at` — timestamp of last modification, timezone-aware.
 
-Implementations MUST NOT require additional fields on `usr_` for spec conformance. Identifiers (email, phone, handle, display name) are application-layer extensions.
+Implementations MUST NOT require additional fields on `usr_` for spec conformance. Identifiers (email, phone, handle) are application-layer extensions and live on `cred_` rows.
 
 ### Lifecycle
 
@@ -39,8 +40,9 @@ suspended → revoked             (terminal)
 
 Implementations MUST provide:
 
-- `createUser() → usr_id` — returns a new `usr_` with `status = active`.
+- `createUser(*, display_name?) → usr_id` — returns a new `usr_` with `status = active`. The optional `display_name` parameter (v0.2, ADR 0014) defaults to null.
 - `getUser(usr_id) → user` — returns the entity or a not-found error.
+- `updateUser(usr_id, *, display_name?) → user` — partial-update operation introduced in v0.2 (ADR 0014). An omitted field means "no change"; an explicit `null` means "set to null." Suspended users MAY be updated; revoked users MUST NOT (raises `AlreadyTerminalError`).
 - `suspendUser(usr_id)` — transitions to `suspended` and terminates sessions.
 - `reinstateUser(usr_id)` — transitions `suspended → active`.
 - `revokeUser(usr_id)` — transitions to `revoked`; triggers the cascade (sessions terminated, credentials revoked).
@@ -55,6 +57,25 @@ cred.usr_id → the user
 ```
 
 Applications MAY cache a denormalized email on their own `usr_` extensions. The spec does not define this.
+
+### Display name (v0.2)
+
+`display_name` is an optional render string for adopter UIs. The spec stays permissive — no length cap, no uniqueness constraint, no required normalization (NFC, case-folding, trimming) — so adopters can layer their own rules at the application boundary. Two users may share a display name; users are identified by `usr_id`, not by display name.
+
+When to set:
+
+- SHOULD be set when the user has a human-meaningful identity rendered in adopter chrome ("Welcome, Nate"), user-list rows, mention surfaces, or audit logs. Without it, adopters fall back to rendering the credential identifier — which fails for passkey-only users (no human-meaningful identifier on the credential), OIDC creds (the IdP `sub` is opaque), and mixed-credential users (no deterministic primary credential).
+- MAY be omitted (null) for programmatic / CI / test-fixture / service-principal users that have no human render surface.
+
+Update semantics:
+
+- `updateUser(usr_id, display_name = "Nate")` sets the field.
+- `updateUser(usr_id, display_name = null)` clears it.
+- `updateUser(usr_id)` (no arg) is a no-op for the field — partial-update sentinel matches `updateOrg` from ADR 0011.
+
+Suspended users MAY be renamed (allows admin tooling to update the display name without first reinstating). Revoked users MUST NOT — `updateUser` raises `AlreadyTerminalError`.
+
+Authorization is unaffected by display-name changes. Tuples reference `usr.id`, never `usr.display_name`.
 
 ## Credentials
 

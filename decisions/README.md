@@ -32,6 +32,7 @@ ADRs are numbered sequentially from 0001 in the order accepted. Numbers never ch
 | [0011](./0011-org-display-name-slug.md) | Organization display name + slug (v0.2 — Proposed) | Adds optional `name` and `slug` to `Organization`; new `updateOrg` operation; closes spec#6 |
 | [0012](./0012-share-tokens.md) | Share tokens for time-bounded resource access (v0.2 — Proposed) | New `shr` resource and `ShareStore` interface; opaque-token bearer access without authenticated principal; closes spec#7 |
 | [0013](./0013-postgres-adapter-transaction-nesting.md) | Postgres adapter transaction nesting (v0.2 — Proposed) | Adapters detect outer transactions and use `SAVEPOINT ft_<method>_<random>` instead of `BEGIN`; enables multi-SDK-call atomicity; closes laravel#1 |
+| [0014](./0014-user-display-name.md) | User display name (v0.2 — Proposed) | Adds optional `display_name` to `User`; new `updateUser` operation; closes spec#9 |
 
 ## Writing a new ADR
 
