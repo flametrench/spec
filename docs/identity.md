@@ -43,6 +43,7 @@ Implementations MUST provide:
 - `createUser(*, display_name?) → usr_id` — returns a new `usr_` with `status = active`. The optional `display_name` parameter (v0.2, ADR 0014) defaults to null.
 - `getUser(usr_id) → user` — returns the entity or a not-found error.
 - `updateUser(usr_id, *, display_name?) → user` — partial-update operation introduced in v0.2 (ADR 0014). An omitted field means "no change"; an explicit `null` means "set to null." Suspended users MAY be updated; revoked users MUST NOT (raises `AlreadyTerminalError`).
+- `listUsers(*, cursor?, limit = 50, query?, status?) → Page<User>` — paginated enumeration introduced in v0.2 (ADR 0015). Cursor and ordering match `listMembers`; `query` is a case-insensitive substring filter against active credential identifiers; `status` filters by user status. Adopters MUST gate the call site (sysadmin route or equivalent); the SDK does not enforce authorization.
 - `suspendUser(usr_id)` — transitions to `suspended` and terminates sessions.
 - `reinstateUser(usr_id)` — transitions `suspended → active`.
 - `revokeUser(usr_id)` — transitions to `revoked`; triggers the cascade (sessions terminated, credentials revoked).

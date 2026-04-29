@@ -6,9 +6,9 @@ info:
   summary: |
     Wire-surface additions for v0.2: MFA enrollment + verification, MFA
     policy CRUD, organization display name + slug (ADR 0011), user
-    display name (ADR 0014). Composes additively with
-    `flametrench-v0.1.yaml`. Use an OpenAPI bundler (e.g.
-    `swagger-cli bundle`) to merge into a single served spec.
+    display name (ADR 0014), user enumeration (ADR 0015). Composes
+    additively with `flametrench-v0.1.yaml`. Use an OpenAPI bundler
+    (e.g. `swagger-cli bundle`) to merge into a single served spec.
   description: |
     Status: Proposed (v0.2 — release-candidate).
 
@@ -53,7 +53,45 @@ security:
   - bearerAuth: []
 
 paths:
-  # ─────────────────────── Users (v0.2 display name) ───────────────────────
+  # ─────────────────────── Users (v0.2 enumeration + display name) ───────────────────────
+
+  /users:
+    get:
+      tags: [Users]
+      summary: List users (sysadmin)
+      description: |
+        Paginated user enumeration introduced in v0.2 (ADR 0015).
+        Cursor-paginated and UUIDv7-ordered, matching `listMembers`.
+
+        Adopters MUST gate this endpoint at the route layer (sysadmin
+        check, or equivalent) — the SDK does not enforce authorization.
+
+        Filters:
+        - `query` — case-insensitive substring against active
+          credential identifiers (e.g. emails for password creds).
+        - `status` — filter by user status.
+      operationId: listUsers
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: query
+          in: query
+          description: Case-insensitive substring filter against active credential identifiers.
+          required: false
+          schema: { type: string }
+        - name: status
+          in: query
+          description: Filter by user status.
+          required: false
+          schema:
+            type: string
+            enum: [active, suspended, revoked]
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserPage' }
 
   /users/{usr_id}:
     parameters:
@@ -449,6 +487,20 @@ components:
           oneOf:
             - { type: string }
             - type: 'null'
+
+    UserPage:
+      type: object
+      required: [data, page]
+      additionalProperties: false
+      description: |
+        Cursor-paginated `User` page envelope (ADR 0015). Mirrors the
+        existing `MembershipPage` / `OrgPage` / `InvitationPage`
+        shapes.
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/User' }
+        page: { $ref: '#/components/schemas/PageMeta' }
 
     Timestamp:
       type: string
