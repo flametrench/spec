@@ -1,6 +1,6 @@
 # 0012 — Share tokens for time-bounded resource access
 
-**Status:** Proposed (v0.2)
+**Status:** Accepted
 **Date:** 2026-04-27
 
 ## Context

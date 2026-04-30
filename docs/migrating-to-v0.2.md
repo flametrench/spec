@@ -2,7 +2,7 @@
 
 This guide is for applications already running on a v0.1 Flametrench SDK that want to adopt v0.2.
 
-**Status:** v0.2 is at `v0.2.0-rc.2`. Adopt it on a non-production environment first, file issues at [`flametrench/spec`](https://github.com/flametrench/spec/issues), and roll forward to production once v0.2 final ships.
+**Status:** v0.2.0 is stable. Adopt it on a non-production environment first, file issues at [`flametrench/spec`](https://github.com/flametrench/spec/issues), and roll forward to production once your acceptance tests pass.
 
 The migration is **additive**: nothing in v0.1 changes shape. Every v0.1 call site keeps working unchanged. The only required change is the [security patch in ADR 0009](#1-mandatory-adr-0009-invitation-acceptance-binding) — already backported to v0.1.x — and that change is enforced by the SDK regardless of whether you adopt the rest of v0.2.
 
@@ -10,12 +10,16 @@ The migration is **additive**: nothing in v0.1 changes shape. Every v0.1 call si
 
 | Surface | v0.1 | v0.2 |
 |---|---|---|
-| ID prefixes | `usr_`, `cred_`, `ses_`, `org_`, `mem_`, `inv_`, `tup_` | adds `mfa_` |
+| ID prefixes | `usr_`, `cred_`, `ses_`, `org_`, `mem_`, `inv_`, `tup_` | adds `mfa_`, `shr_` |
 | Authorization | exact-match `check()` over tuples | adds optional `rules` parameter on store construction (rewrite rules) |
+| Share tokens | absent | new `ShareStore` for capability-style URL sharing (ADR 0012) |
 | Identity | password / passkey / OIDC credentials | adds MFA factor records (TOTP, WebAuthn, recovery) + `usr_mfa_policy` |
+| User entity | `id`, `status`, timestamps | adds optional `display_name` (ADR 0014) + `updateUser` partial-update |
+| User enumeration | absent | new `listUsers` cursor-paginated with credential-identifier filter (ADR 0015) |
 | WebAuthn (in MFA) | — | ES256 + RS256 + EdDSA assertion verification |
 | `acceptInvitation` | accepted any `as_usr_id` (security gap) | requires `accepting_identifier` byte-matching `invitation.identifier` |
-| Postgres reference | 7 tables | adds `mfa`, `usr_mfa_policy`, plus `ses.mfa_verified_at` column |
+| Postgres reference | 7 tables | adds `mfa`, `usr_mfa_policy`, `shr`, plus `ses.mfa_verified_at` and `usr.display_name` columns |
+| Postgres adapters | in-memory only | `PostgresIdentityStore`, `PostgresTenancyStore`, `PostgresTupleStore`, `PostgresShareStore` cooperate with caller-owned outer transactions via savepoints (ADR 0013) |
 | Postgres RLS | absent | optional `postgres-rls.sql` companion |
 | OpenAPI | `flametrench-v0.1.yaml` | `flametrench-v0.2-additions.yaml` (composes additively) |
 
@@ -123,7 +127,67 @@ The new tables:
 - **`usr_mfa_policy`** — per-user enforcement, 1:1 with `usr`. Absent row means MFA not required.
 - **`ses.mfa_verified_at`** — nullable timestamp for step-up auth freshness.
 
-## 5. Optional: Postgres RLS
+## 5. Optional: Postgres adapter transaction nesting (ADR 0013)
+
+If your application has its own outer transactions and wants the SDK's Postgres adapter writes to participate in them — commit-or-rollback together — construct the adapter with a caller-owned connection instead of a pool/DataSource. The adapter detects this and pivots from BEGIN/COMMIT to SAVEPOINT/RELEASE so a constraint violation in one SDK call rolls back its own work without poisoning the outer transaction.
+
+```python
+# Standalone (the v0.1 / default path is unchanged)
+store = PostgresTupleStore(pool=pool)
+
+# Caller-owned (new in v0.2)
+async with pool.connection() as conn, conn.transaction():
+    nested = PostgresTupleStore(connection=conn)
+    await nested.create_tuple(...)
+    await nested.create_tuple(...)
+    # If the second create_tuple raises DuplicateTupleError, the savepoint
+    # rolls back; the outer txn stays usable for further work.
+```
+
+Same contract per language idiom — Node distinguishes Pool vs PoolClient by the presence of a `release` method; PHP uses PDO's `inTransaction()`; Java accepts a `Connection` constructor in addition to `DataSource`. See ADR 0013 for the full pattern.
+
+## 6. Optional: Share tokens (ADR 0012)
+
+The new `ShareStore` mints opaque tokens (`shr_<32 hex>` ID, separate 256-bit base64url token) that grant a single relation on a single object until expiry. Tokens are SHA-256-hashed at rest; only the holder of the token can verify against the store. Tokens are capped at 1 year and may be marked single-use.
+
+```python
+result = share_store.create_share(
+    object_type="proj", object_id=project_id,
+    relation="viewer", created_by=alice_id,
+    expires_in_seconds=86400,
+    single_use=False,
+)
+# `result.token` is the value to embed in a share URL — show it once;
+# the SDK only stores its hash.
+verified = share_store.verify_share_token(result.token)  # → VerifiedShare
+```
+
+Spec error precedence: `consumed > revoked > expired > active`. Suspended/revoked users cannot mint shares (`creator_not_active`).
+
+## 7. Optional: User display name + updateUser (ADR 0014)
+
+`User` records carry an optional `display_name` (max 200 chars, NFC-normalized). New `update_user` operation supports partial updates — pass `UNSET` (or the language equivalent) to leave a field unchanged, or `None`/`null` to clear it.
+
+```python
+identity_store.update_user(usr_id, display_name="Alice Liddell")
+# Or clear it:
+identity_store.update_user(usr_id, display_name=None)
+```
+
+## 8. Optional: User enumeration (ADR 0015)
+
+`list_users` returns a cursor-paginated page filtered by credential-identifier substring (case-insensitive) and/or `status`. Inactive users (suspended/revoked) are included unless `status` is supplied.
+
+```python
+page = identity_store.list_users(
+    identifier_query="alice@",  # matches any credential identifier
+    status="active",
+    cursor=None, limit=50,
+)
+# page.data: list[User]; page.next_cursor: str | None
+```
+
+## 9. Optional: Postgres RLS
 
 `reference/postgres-rls.sql` is a new optional companion. Apply AFTER `postgres.sql`. Installs per-table policies that read two session GUCs:
 
@@ -134,7 +198,7 @@ The application sets the GUCs at the start of each request from its authenticati
 
 ## Conformance fixture changes
 
-If you run the conformance suite against your own implementation, the fixture corpus grew from 17 (v0.1) to 24 (v0.2). New files:
+If you run the conformance suite against your own implementation, the fixture corpus grew from 17 (v0.1) to 27 (v0.2). New files:
 
 - `authorization/rewrite-rules/computed-userset.json` (3 tests)
 - `authorization/rewrite-rules/tuple-to-userset.json` (3 tests)
@@ -145,8 +209,12 @@ If you run the conformance suite against your own implementation, the fixture co
 - `identity/mfa/webauthn-counter-decrease-rejected.json` (4 tests for spec §6.1.1)
 - `identity/mfa/webauthn-assertion-algorithms.json` (6 tests for ADR 0010 dispatch)
 - `tenancy/invitation-accept-binding.json` (4 tests for ADR 0009)
+- `identity/user-display-name.json` (ADR 0014: optional display_name + updateUser partial-update)
+- `identity/list-users.json` (ADR 0015: cursor-paginated user enumeration)
 
 The existing `tenancy/invitation-accept.json` was updated to pass `accepting_identifier` alongside `as_usr_id`; pre-fix SDKs see it fail closed with `IdentifierBindingRequiredError`, which is the desired behavior.
+
+ADR 0013 (Postgres adapter transaction nesting) is enforced at the SDK level rather than via fixtures — every Postgres adapter has regression tests demonstrating savepoint cooperation under a caller-owned outer transaction.
 
 ## Rollback
 

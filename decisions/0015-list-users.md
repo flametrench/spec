@@ -1,6 +1,6 @@
 # 0015 — IdentityStore.listUsers
 
-**Status:** Proposed (v0.2)
+**Status:** Accepted
 **Date:** 2026-04-28
 
 ## Context

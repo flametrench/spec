@@ -1,6 +1,6 @@
 # 0011 — Organization display name + slug
 
-**Status:** Proposed (v0.2)
+**Status:** Accepted
 **Date:** 2026-04-26
 
 ## Context

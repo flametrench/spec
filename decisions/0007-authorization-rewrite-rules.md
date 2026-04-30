@@ -1,6 +1,6 @@
 # 0007 — Authorization rewrite rules
 
-**Status:** Proposed (v0.2)
+**Status:** Accepted
 **Date:** 2026-04-25
 
 ## Context

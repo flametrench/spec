@@ -121,16 +121,16 @@
       "steps": [
         {
           "op": "create_user_with_password_credential",
-          "input": { "identifier": "rotated@example.com", "password": "long-enough-password-for-floor" },
-          "captures": { "user_id": "user.id", "old_cred_id": "credential.id" }
+          "input": { "identifier": "gone@example.com", "password": "long-enough-password-for-floor" },
+          "captures": { "user_id": "user.id", "cred_id": "credential.id" }
         },
         {
-          "op": "rotate_password_credential",
-          "input": { "cred_id": "{old_cred_id}", "new_password": "long-enough-replacement" }
+          "op": "revoke_credential",
+          "input": { "cred_id": "{cred_id}" }
         },
         {
           "op": "list_users",
-          "input": { "query": "rotated@example.com" },
+          "input": { "query": "gone@example.com" },
           "expected": {
             "data_ids_unordered": []
           }

@@ -32,9 +32,9 @@ Flametrench v0.1 covers three capabilities. Detailed specs live in [`docs/identi
 
 **Authorization.** Relational tuples (`tup_`) as the only authz primitive; exact-match `check()` over single relations or non-empty relation sets. Six built-in relations (`owner`, `admin`, `member`, `guest`, `viewer`, `editor`) plus application-registered custom relations. No rewrite rules or derivations in v0.1 — applications materialize implied grants or compose checks at call sites. Rewrite rules arrive in v0.2 (ADR 0007); group subjects and parent-child inheritance remain deferred.
 
-## What v0.2 adds (Proposed; release-candidate)
+## What v0.2 adds
 
-v0.2 is feature-complete in source and tagged across the four SDK families as `v0.2.0-rc.{4,5}`. The work splits across four ADRs and one backport:
+v0.2.0 is stable. The four SDK families ship at `v0.2.0` across Python / Node / PHP / Java. The work splits across nine ADRs (0007–0015) and one backport:
 
 **Authorization rewrite rules (ADR 0007).** A subset of Zanzibar's `userset_rewrite`: the three node types `this`, `computed_userset`, and `tuple_to_userset`, composed via union. Cycle detection and depth/fan-out bounds (8 / 1024). Rules ride on top of v0.1's exact-match `check()` — when no rules are registered, behavior is byte-identical to v0.1.
 
@@ -52,6 +52,12 @@ Per-user enforcement via `usr_mfa_policy` (with grace window for rollout). `veri
 
 **Postgres-backed reference adapters.** `PostgresIdentityStore`, `PostgresTenancyStore`, `PostgresTupleStore`, and `PostgresShareStore` now ship in every SDK family alongside the in-memory reference stores, mirroring in-memory semantics byte-for-byte at the SDK boundary. Postgres-backed rewrite-rule evaluation remains deferred — the in-memory store is the rules-enabled path in v0.2.
 
+**Postgres adapter transaction nesting (ADR 0013).** Every Postgres adapter cooperates with adopter-side outer transactions: when constructed with a caller-owned connection, multi-statement operations open a SAVEPOINT instead of `BEGIN`, and single-statement writes shield the outer txn from constraint violations via `nested()`. Standalone construction (DataSource / pool / DSN) is unchanged.
+
+**User display name + updateUser (ADR 0014).** `User` carries an optional `display_name` (max 200 chars, NFC-normalized) with partial-update semantics through a new `updateUser` operation.
+
+**User enumeration (ADR 0015).** `IdentityStore.listUsers` provides cursor-paginated enumeration filtered by credential-identifier substring (case-insensitive) and/or user `status`.
+
 Everything else — audit logs, notifications, file handling, billing hooks, feature flags, magic-link credentials — is out of scope for v0.2 and arrives in later versions. Shipping narrow is the point.
 
 ## SDK families
@@ -67,7 +73,7 @@ Flametrench ships four first-party SDK families, all conforming to the same fixt
 
 A framework adapter for Laravel ([`flametrench/laravel`](https://github.com/flametrench/laravel)) layers on top of the PHP SDK family.
 
-A conformance test suite lives alongside the specification (25 fixture files spanning v0.1.0 and v0.2.0). SDKs claim compliance by running the fixtures against themselves; cross-language parity is enforced by the same fixtures consumed by all four families.
+A conformance test suite lives alongside the specification (27 fixture files spanning v0.1.0 and v0.2.0). SDKs claim compliance by running the fixtures against themselves; cross-language parity is enforced by the same fixtures consumed by all four families.
 
 ## What this specification defines
 
@@ -87,12 +93,10 @@ What this specification does not define:
 ## Status
 
 - **v0.1 spec**: shipped. Adopted by sitesource/admin (the first PHP adopter); spec#5 surfaced in adoption and was patched in v0.1.x via ADR 0009.
-- **v0.2 spec**: release-candidate, tagged `v0.2.0-rc.6`. Locks the surface (rewrite rules + MFA TOTP/WebAuthn/recovery + WebAuthn ES256/RS256/EdDSA + share tokens + Postgres reference adapters + threat model + Postgres adapter transaction nesting + user display name + user enumeration) for adopter validation before final. Adopter-driven patches across the RC cycle: spec#7 (share tokens, rc.3), spec#8 (wire-format `object_id` acceptance, rc.4), spec#9 (user display name, rc.6), spec#10 (`listUsers`, rc.6), and laravel#1 (Postgres adapter transaction nesting, rc.6).
-- **SDKs**: Python / Node / PHP / Java each tagged at `v0.2.0-rc.x` across the family. Current versions: `ids@v0.2.0-rc.{2,3}`, `authz@v0.2.0-rc.{4,5}` (PHP rc.5; others rc.4), `tenancy@v0.2.0-rc.{5,6}` (PHP rc.6; others rc.5), `identity@v0.2.0-rc.6` (Node artifact at rc.7 — same spec contract, republished after a broken rc.6 publish). Packagist tracks tags directly. npm: every `@flametrench/*` core package's `rc` dist-tag matches its local manifest (verified end-to-end 2026-04-29). PyPI and Maven Central are bootstrapping (org / credential approvals pending). Always verify the registry directly: `npm view @flametrench/<pkg> versions --json` (note the plural — singular `version` returns only `latest` and hides RCs published under `rc`).
-- **Postgres reference**: `postgres.sql` covers the full v0.1 + v0.2 data model (including the `mfa`, `usr_mfa_policy`, and `shr` tables added in v0.2; `usr.display_name` added in rc.6). `postgres-rls.sql` is an optional RLS companion.
+- **v0.2 spec**: stable, tagged `v0.2.0`. Surface: rewrite rules (ADR 0007), MFA TOTP/WebAuthn/recovery (ADRs 0008 + 0010), invitation acceptance binding (ADR 0009, also in v0.1.x), org display name + slug (ADR 0011), share tokens (ADR 0012), Postgres adapter transaction nesting (ADR 0013), user display name (ADR 0014), and user enumeration (ADR 0015).
+- **SDKs**: Python / Node / PHP / Java each tagged at `v0.2.0` across the family (`ids`, `identity`, `tenancy`, `authz`). Packagist and npm publish the stable artifacts; PyPI and Maven Central are bootstrapping (org / credential approvals pending) and will publish once unblocked. Always verify a registry directly before quoting state: `npm view @flametrench/<pkg> versions --json` (note the plural — singular `version` returns only the `latest` dist-tag).
+- **Postgres reference**: `postgres.sql` covers the full v0.1 + v0.2 data model (including the `mfa`, `usr_mfa_policy`, and `shr` tables added in v0.2; `usr.display_name` column also added in v0.2). `postgres-rls.sql` is an optional RLS companion.
 - **Conformance suite**: 27 fixture files, executed by all four SDK families.
-
-The release-candidate is the right time to integrate, file issues, and shape the v0.2 final. Nothing in flametrench is pinned for production until v0.2 final ships.
 
 ## Structure of this repository
 
@@ -110,7 +114,7 @@ flametrench/spec/
 │   ├── security.md              threat model + adopter responsibilities (normative)
 │   ├── external-idps.md         coexistence with Auth0 / Clerk / Cognito / etc. (non-normative)
 │   └── migrating-to-v0.2.md     upgrade guide for v0.1 adopters
-├── decisions/                   Architecture Decision Records (10 ADRs)
+├── decisions/                   Architecture Decision Records (15 ADRs)
 │   ├── README.md                index + ADR writing guide
 │   ├── 0001 — authorization model
 │   ├── 0002 — tenancy model
@@ -121,7 +125,12 @@ flametrench/spec/
 │   ├── 0007 — authorization rewrite rules                 (v0.2)
 │   ├── 0008 — multi-factor authentication                 (v0.2)
 │   ├── 0009 — invitation acceptance binding               (v0.1.x security)
-│   └── 0010 — WebAuthn RS256 + EdDSA                       (v0.2)
+│   ├── 0010 — WebAuthn RS256 + EdDSA                       (v0.2)
+│   ├── 0011 — organization display name + slug             (v0.2)
+│   ├── 0012 — share tokens                                 (v0.2)
+│   ├── 0013 — Postgres adapter transaction nesting          (v0.2)
+│   ├── 0014 — user display name                             (v0.2)
+│   └── 0015 — IdentityStore.listUsers                       (v0.2)
 ├── reference/                   non-normative implementation artifacts
 │   ├── README.md                conventions; what's normative vs reference
 │   ├── postgres.sql             reference Postgres DDL (v0.1 + v0.2 additive)
@@ -130,7 +139,7 @@ flametrench/spec/
 │   ├── flametrench-v0.1.yaml    v0.1 wire surface (ADR 0009 patch included)
 │   └── flametrench-v0.2-additions.yaml   MFA additive overlay
 ├── conformance/
-│   ├── index.json               24-fixture manifest
+│   ├── index.json               27-fixture manifest
 │   ├── fixture.schema.json
 │   ├── fixtures/                cross-SDK fixture corpus
 │   └── (validator + harness in .github/scripts)
@@ -146,13 +155,13 @@ flametrench/spec/
 
 ## Contributing
 
-The specification is in v0.2 release-candidate and the surface area is small, so direct contributions are limited until v0.2 final ships. What helps most right now:
+The specification is at v0.2 stable and the surface area is small, so direct contributions are limited while v0.3 work is being scoped. What helps most right now:
 
 - **Questions and challenges.** If something in the specification looks wrong, unclear, or underdefined, open an issue. Early feedback has disproportionate impact.
 - **Prior art pointers.** If you know of a project that has solved one of these problems well, we want to learn from it.
 - **Real-world requirements.** If you're running a Laravel or Next.js application in production and dealing with identity, tenancy, or authorization pain, tell us what hurts.
 
-When the specification stabilizes and the conformance suite is mature, pull requests for additional SDK languages will be welcomed.
+Pull requests for additional SDK languages will be welcomed once an adopter signals real demand.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full contribution workflow, including the Developer Certificate of Origin (DCO) signoff requirement.
 

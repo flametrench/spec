@@ -1,6 +1,6 @@
 # 0010 — WebAuthn RS256 + EdDSA
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-04-26
 
 ## Context

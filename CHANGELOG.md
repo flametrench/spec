@@ -2,6 +2,22 @@
 
 All notable spec changes are recorded here. Adopter-facing migration guidance lives in [`docs/migrating-to-v0.2.md`](docs/migrating-to-v0.2.md). Per-SDK changelogs live in their respective repos; this file tracks the spec contract only.
 
+## [v0.2.0] — 2026-04-30
+
+v0.2.0 stable cutoff. No surface changes vs `v0.2.0-rc.6`; this release flips ADRs 0007–0015 from Proposed to Accepted, snaps the four SDK families to `v0.2.0` (Python / Node / PHP / Java for `ids` / `identity` / `tenancy` / `authz`), and bumps the OpenAPI overlay version field from `0.2.0-rc.6` to `0.2.0`.
+
+### Accepted ADRs
+0007 (rewrite rules), 0008 (MFA), 0009 (invitation acceptance binding — backported v0.1.x), 0010 (WebAuthn RS256 + EdDSA), 0011 (org display_name + slug), 0012 (share tokens), 0013 (Postgres adapter transaction nesting), 0014 (user display_name), 0015 (`listUsers`).
+
+### Cross-language SDK regression coverage
+ADR 0013 savepoint cooperation is exercised by per-SDK adapter regression tests across PHP / Node / Python / Java: `PostgresIdentityStore` (createUser / credential creators shielded by `nested()`), `PostgresTenancyStore` (createOrg / createInvitation cooperation + savepoint rollback), `PostgresShareStore` (createShare / revokeShare savepoint cooperation), `PostgresTupleStore` (`INSERT … ON CONFLICT … DO NOTHING RETURNING` replaces catch-and-SELECT).
+
+### Registry state at cut
+- **Packagist**: `flametrench/{ids,identity,tenancy,authz}@v0.2.0` published.
+- **npm**: `@flametrench/{ids,identity,tenancy,authz}@0.2.0` published via `pnpm publish --tag latest`; `latest` dist-tag moved from any pre-release to `0.2.0`.
+- **PyPI**: blocked on `flametrench` org approval. Wheels are built locally; publish when unblocked.
+- **Maven Central**: blocked on Sonatype Central Portal user-token regeneration. Bundles are built locally; publish when unblocked.
+
 ## [v0.2.0-rc.7-equivalent] — 2026-04-29 (cross-SDK ADR 0013 rollout)
 
 No spec contract changes — all four SDK families now implement ADR 0013 (Postgres adapter transaction nesting). Per-package SDK bumps:
