@@ -34,7 +34,7 @@ Flametrench v0.1 covers three capabilities. Detailed specs live in [`docs/identi
 
 ## What v0.2 adds
 
-v0.2.0 is stable. The four SDK families ship at `v0.2.0` across Python / Node / PHP / Java. The work splits across nine ADRs (0007–0015) and one backport:
+The spec is at `v0.2.0`, stable. SDK package versions vary slightly across language families: as of 2026-05-01, Node `@flametrench/{identity,tenancy,authz}` are at `0.2.1` (a patch republish to ship the ADR 0013 savepoint cooperation that `0.2.0`'s built artifacts had missing — see `docs/release-checklist.md`); PHP / Python / Java SDKs are at `0.2.0`. The patch level moves independently; the spec version is the family marker. The v0.2 work splits across nine ADRs (0007–0015) and one backport:
 
 **Authorization rewrite rules (ADR 0007).** A subset of Zanzibar's `userset_rewrite`: the three node types `this`, `computed_userset`, and `tuple_to_userset`, composed via union. Cycle detection and depth/fan-out bounds (8 / 1024). Rules ride on top of v0.1's exact-match `check()` — when no rules are registered, behavior is byte-identical to v0.1.
 
@@ -94,7 +94,7 @@ What this specification does not define:
 
 - **v0.1 spec**: shipped. Adopted by sitesource/admin (the first PHP adopter); spec#5 surfaced in adoption and was patched in v0.1.x via ADR 0009.
 - **v0.2 spec**: stable, tagged `v0.2.0`. Surface: rewrite rules (ADR 0007), MFA TOTP/WebAuthn/recovery (ADRs 0008 + 0010), invitation acceptance binding (ADR 0009, also in v0.1.x), org display name + slug (ADR 0011), share tokens (ADR 0012), Postgres adapter transaction nesting (ADR 0013), user display name (ADR 0014), and user enumeration (ADR 0015).
-- **SDKs**: Python / Node / PHP / Java each tagged at `v0.2.0` across the family (`ids`, `identity`, `tenancy`, `authz`). Packagist and npm publish the stable artifacts; PyPI and Maven Central are bootstrapping (org / credential approvals pending) and will publish once unblocked. Always verify a registry directly before quoting state: `npm view @flametrench/<pkg> versions --json` (note the plural — singular `version` returns only the `latest` dist-tag).
+- **SDKs**: Python / Node / PHP / Java span `v0.2.0`–`v0.2.1` across the family (`ids`, `identity`, `tenancy`, `authz`). Packagist and npm publish the live artifacts; PyPI and Maven Central are bootstrapping (org / credential approvals pending) and will publish once unblocked. Always verify a registry directly before quoting state: `npm view @flametrench/<pkg> versions --json` (note the plural — singular `version` returns only the `latest` dist-tag). The release checklist at `docs/release-checklist.md` is the canonical pre-publish process.
 - **Postgres reference**: `postgres.sql` covers the full v0.1 + v0.2 data model (including the `mfa`, `usr_mfa_policy`, and `shr` tables added in v0.2; `usr.display_name` column also added in v0.2). `postgres-rls.sql` is an optional RLS companion.
 - **Conformance suite**: 27 fixture files, executed by all four SDK families.
 
