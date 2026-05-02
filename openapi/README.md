@@ -5,7 +5,8 @@ The HTTP surface of Flametrench.
 ## Files
 
 - **`flametrench-v0.1.yaml`** — the v0.1 specification, OpenAPI 3.1.
-- **`flametrench-v0.2-additions.yaml`** — v0.2 additive surface (MFA enrollment + verification, MFA policy CRUD). Composes additively with v0.1; bundle the two for a complete v0.2 spec via `npx @redocly/cli bundle` or equivalent.
+- **`flametrench-v0.2-additions.yaml`** — v0.2 additive surface (MFA enrollment + verification, MFA policy CRUD, organization display name + slug, user display name, user enumeration). Composes additively with v0.1; bundle the two for a complete v0.2 spec via `npx @redocly/cli bundle` or equivalent.
+- **`flametrench-v0.3-additions.yaml`** — v0.3 additive surface (personal access tokens, ADR 0016). Composes additively with v0.1 + v0.2; bundle all three for a complete v0.3 spec.
 
 ## Relationship to the rest of the spec
 
@@ -44,6 +45,10 @@ Every operation listed in the `docs/*.md` chapters has a corresponding path in t
 - **MFA factor enrollment + verification.** New `/users/{usr_id}/mfa-factors`, `/mfa-factors/{mfa_id}/confirm`, `/mfa-factors/{mfa_id}/revoke`, `/users/{usr_id}/mfa/verify` endpoints; new `mfa_` ID prefix. TOTP, WebAuthn (ES256/RS256/EdDSA per ADR 0010), and recovery-code factor types.
 - **`usr_mfa_policy`.** New `/users/{usr_id}/mfa-policy` GET/PUT. The `verifyPassword` 200 response gains an additive `mfa_required: true` discriminator when policy is active and grace has elapsed.
 - **Security backport into v0.1**: `acceptInvitation` request body now requires `accepting_identifier` when `as_usr_id` is supplied (ADR 0009 / spec#5). Documented in the v0.1 file's `AcceptInvitationRequest` schema; the constraint applies to all v0.1.x and forward.
+
+## What's in v0.3 (Proposed; in development)
+
+- **Personal access tokens.** New `pat_` ID prefix; new `/users/{usr_id}/pats` (POST + GET), `/pats/{pat_id}` (GET), `/pats/{pat_id}/revoke` (POST) endpoints. Token wire format is `pat_<32hex-id>_<base64url-secret>`; the auth middleware prefix-routes incoming bearer tokens to session / share / PAT verifiers per ADR 0016. Verification is SDK-only (no public `/pats/verify` route — mirrors the share-token precedent).
 
 ## Status
 

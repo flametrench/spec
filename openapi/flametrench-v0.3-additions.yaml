@@ -1,0 +1,408 @@
+openapi: 3.1.0
+
+info:
+  title: Flametrench v0.3 — additions
+  version: 0.3.0
+  summary: |
+    Wire-surface additions for v0.3: personal access tokens (ADR 0016).
+    Composes additively with `flametrench-v0.1.yaml` and
+    `flametrench-v0.2-additions.yaml`. Use an OpenAPI bundler
+    (e.g. `swagger-cli bundle`) to merge into a single served spec.
+  description: |
+    Status: Proposed (v0.3 — in development).
+
+    This file defines ONLY the new wire-surface additions for v0.3. The
+    v0.1 and v0.2 paths are unchanged in their shape and remain in
+    their respective files — they coexist with the additions here.
+
+    v0.3 introduces one capability surface that did not exist in v0.2:
+
+      - **Personal access tokens** (per ADR 0016): a per-user `pat_`
+        record carrying a hashed bearer secret. Issued via the routes
+        below; presented by clients in the same `Authorization: Bearer`
+        header that carries session tokens. The auth middleware
+        inspects the token prefix (`pat_…` vs the session prefix) and
+        dispatches to `verifyPatToken` or session resolution
+        accordingly. Verification is SDK-only — there is no public
+        `POST /v1/pats/verify` route, mirroring the share-token
+        precedent (ADR 0012).
+
+    The audit-log `auth.kind` field gains a `pat` value alongside the
+    v0.2-implicit `session`, plus `share` (ADR 0012) and `system`
+    (operator-initiated). Adopters that emit audit records SHOULD
+    populate this discriminator going forward; the field is additive
+    and pre-v0.3 records that omit it remain valid.
+
+    Spec section pointers in operation descriptions reference the
+    `decisions/` ADRs and the `docs/identity.md` chapter.
+  contact:
+    name: NDC Digital, LLC
+    url: https://flametrench.dev
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: https://api.example.com
+    description: Replace with your deployment's API origin.
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ─────────────────────── Personal access tokens (ADR 0016) ───────────────────────
+
+  /users/{usr_id}/pats:
+    parameters:
+      - $ref: '#/components/parameters/UsrId'
+
+    post:
+      tags: [PersonalAccessTokens]
+      summary: Issue a personal access token
+      description: |
+        Mints a new PAT bound to the user. The full token string —
+        `pat_<32hex-id>_<base64url-secret>` — is returned ONCE in the
+        `token` field; the server stores only an Argon2id hash of the
+        secret half (parameters at the spec floor pinned by ADR 0004
+        for password creds). Lost tokens cannot be recovered, only
+        re-issued.
+
+        The `name` field is a human-readable label shown in the user's
+        token list (e.g. `"laptop-cli"`, `"ci-deploy"`).
+
+        The `scope` field is an application-defined array of strings.
+        The spec does not pin scope vocabulary — adopters define it.
+        An empty array is allowed and means "no scope claims attached;"
+        adopters' verifiers decide whether that grants full access or
+        none.
+
+        The `expires_at` field is optional. When omitted, the token has
+        no expiry; the spec recommends setting one for human-issued
+        CLI tokens. Maximum lifetime is application-policy; the spec
+        does not pin a ceiling.
+
+        Authorization: the SDK does not gate this route. Adopters MUST
+        gate at the route layer — typically "the requesting principal
+        owns `usr_id`, OR is a sysadmin acting on the user's behalf."
+      operationId: createPat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePatRequest' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreatePatResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: |
+            Conflict. Common cause: user is in a terminal state
+            (revoked) and cannot have new tokens issued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+    get:
+      tags: [PersonalAccessTokens]
+      summary: List a user's personal access tokens
+      description: |
+        Cursor-paginated list of PAT metadata for the user. The token
+        secret is NEVER returned — only `id`, `name`, `scope`, status,
+        timestamps, and `last_used_at`. Mirrors the
+        `listMembers` / `listUsers` envelope shape.
+
+        Includes revoked tokens by default so users can see their full
+        history; pass `status=active` to filter to live tokens only.
+
+        Authorization: same as `createPat` — adopter route gate.
+      operationId: listPatsForUser
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: status
+          in: query
+          description: |
+            Filter by token status. Default returns all (active,
+            expired, revoked).
+          required: false
+          schema:
+            type: string
+            enum: [active, expired, revoked]
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PatPage' }
+
+  /pats/{pat_id}:
+    parameters:
+      - $ref: '#/components/parameters/PatId'
+    get:
+      tags: [PersonalAccessTokens]
+      summary: Get a single personal access token
+      description: |
+        Returns token metadata. The secret is NEVER returned, even to
+        the owner — by design, the plaintext secret leaves the server
+        exactly once (in the `createPat` response).
+
+        Authorization: adopter route gate. Typical policy is "owner OR
+        sysadmin." The SDK returns the row regardless of caller; the
+        adopter is responsible for the visibility check.
+      operationId: getPat
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PersonalAccessToken' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /pats/{pat_id}/revoke:
+    parameters:
+      - $ref: '#/components/parameters/PatId'
+    post:
+      tags: [PersonalAccessTokens]
+      summary: Revoke a personal access token
+      description: |
+        Terminal-state transition. A revoked token MUST fail
+        `verifyPatToken` with `PatRevokedError` thereafter, and MUST
+        NOT be reinstated; the user re-issues a new token (which
+        creates a new row with no `replaces` link — PATs are bearer
+        secrets, not credentials, and lack the v0.2 cred
+        revoke-and-re-add lineage).
+
+        Idempotent: revoking an already-revoked token returns 200 with
+        the existing row (no error).
+
+        Authorization: adopter route gate. Typical policy is "owner OR
+        sysadmin (for security incident response)."
+      operationId: revokePat
+      responses:
+        '200':
+          description: Revoked.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PersonalAccessToken' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Bearer token. v0.3 broadens the accepted token forms — the
+        same header now carries session tokens (v0.1), share tokens
+        (v0.2 / ADR 0012, when adopted), and personal access tokens
+        (v0.3 / ADR 0016). The auth middleware MUST inspect the token
+        prefix and dispatch to the matching verifier:
+
+          - `<session-prefix>…` → session resolver (v0.1)
+          - `shr_<32hex>_<…>`   → `verifyShareToken` (ADR 0012)
+          - `pat_<32hex>_<…>`   → `verifyPatToken`   (ADR 0016)
+
+        Prefix dispatch is normative — a verifier MUST NOT attempt
+        cross-form decoding (e.g. trying a `pat_…` string against the
+        session resolver). Mis-routing is a 401 with
+        `code: auth.token_format_unrecognized`.
+
+  parameters:
+    UsrId:
+      in: path
+      name: usr_id
+      required: true
+      schema: { $ref: '#/components/schemas/UsrId' }
+    PatId:
+      in: path
+      name: pat_id
+      required: true
+      schema: { $ref: '#/components/schemas/PatId' }
+
+  responses:
+    NotFound:
+      description: Not found.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    # ─── ID + envelope shapes (re-declared for standalone bundling) ────
+
+    UsrId:
+      type: string
+      pattern: '^usr_[0-9a-f]{32}$'
+      description: Wire-format prefixed UUIDv7 for a user.
+
+    PatId:
+      type: string
+      pattern: '^pat_[0-9a-f]{32}$'
+      description: |
+        Wire-format prefixed UUIDv7 for a personal access token. This
+        is the ID half of the token — the addressable handle. The full
+        bearer token concatenates this with the secret half via an
+        underscore separator (see `PatToken`).
+
+    PatToken:
+      type: string
+      pattern: '^pat_[0-9a-f]{32}_[A-Za-z0-9_-]+$'
+      description: |
+        Full bearer token in `pat_<32hex-id>_<base64url-secret>` form.
+        The `_<secret>` segment is base64url-encoded (RFC 4648 §5,
+        no padding) and carries ≥256 bits of entropy. The token is
+        returned ONCE on issuance and never again — the server stores
+        only an Argon2id hash of the secret segment.
+
+        Verifiers split on the FIRST underscore after `pat_<32hex>` to
+        recover the ID for indexed lookup, then constant-time-compare
+        the Argon2id hash of the secret segment against the stored
+        hash. Failure paths (no row, hash mismatch) MUST be conflated
+        into a single error response to avoid a token-presence
+        timing oracle (see ADR 0016 §"Verification semantics").
+
+    PatStatus:
+      type: string
+      enum: [active, expired, revoked]
+      description: |
+        Lifecycle status. `active` — present, not expired, not revoked.
+        `expired` — past `expires_at`. `revoked` — explicitly revoked
+        by `revokePat`. The latter two are terminal: a token cannot
+        return to `active` once it leaves it.
+
+    Timestamp:
+      type: string
+      format: date-time
+      description: RFC 3339 UTC timestamp.
+
+    Error:
+      type: object
+      required: [code, message]
+      additionalProperties: false
+      description: |
+        Stable error envelope. The `code` is dot-namespaced and
+        machine-readable; `message` is human-readable and not pinned
+        across versions.
+      properties:
+        code:
+          type: string
+          description: |
+            v0.3 examples: `pat.not_found`, `pat.expired`,
+            `pat.revoked`, `auth.token_format_unrecognized`,
+            `conflict.already_terminal`.
+        message: { type: string }
+
+    # ─── PAT record + create/list shapes ──────────────────────────────
+
+    PersonalAccessToken:
+      type: object
+      required:
+        [id, usr_id, name, scope, status, created_at, updated_at]
+      additionalProperties: false
+      description: |
+        Server-persisted PAT row. The secret hash is NEVER serialized
+        in this shape — only metadata. Use `createPat` to obtain the
+        plaintext token; thereafter only the owner's local copy holds
+        the secret.
+      properties:
+        id:         { $ref: '#/components/schemas/PatId' }
+        usr_id:     { $ref: '#/components/schemas/UsrId' }
+        name:
+          type: string
+          description: |
+            Human-readable label set by the issuing user. Adopters
+            SHOULD enforce a sensible length cap (e.g. ≤120 chars);
+            the spec does not pin one.
+        scope:
+          type: array
+          items: { type: string }
+          description: |
+            Application-defined scope claims. The spec does not pin
+            vocabulary; adopters' authz layer interprets the strings
+            (e.g. `"repo:read"`, `"deploy:write"`, or no claims at
+            all for "full owner-equivalent" tokens).
+        status:     { $ref: '#/components/schemas/PatStatus' }
+        expires_at:
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+          description: |
+            Optional expiry. `null` means no expiry; the token is
+            valid until revoked. The spec recommends setting one for
+            human-issued CLI tokens.
+        last_used_at:
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+          description: |
+            Most recent successful `verifyPatToken` timestamp, OR
+            `null` if never used. Updated by the SDK on every
+            successful verify; eventual-consistent under burst load
+            (the SDK MAY coalesce updates within a short window to
+            avoid a write-per-request hot path — see ADR 0016
+            §"Operational notes").
+        revoked_at:
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        updated_at: { $ref: '#/components/schemas/Timestamp' }
+
+    CreatePatRequest:
+      type: object
+      required: [name, scope]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: Human-readable label.
+        scope:
+          type: array
+          items: { type: string }
+          description: Application-defined scope claims (may be empty).
+        expires_at:
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+          description: |
+            Optional expiry timestamp. Omit or send `null` for no
+            expiry. MUST be in the future when set; otherwise the
+            server returns 400 with `code: pat.expires_in_past`.
+
+    CreatePatResponse:
+      type: object
+      required: [pat, token]
+      additionalProperties: false
+      description: |
+        The plaintext `token` is returned ONCE; the server retains
+        only an Argon2id hash. Clients MUST capture and store it
+        immediately — there is no "show me the token again" path.
+      properties:
+        pat:   { $ref: '#/components/schemas/PersonalAccessToken' }
+        token: { $ref: '#/components/schemas/PatToken' }
+
+    PatPage:
+      type: object
+      required: [data, page]
+      additionalProperties: false
+      description: |
+        Cursor-paginated `PersonalAccessToken` page envelope. Mirrors
+        the existing `MembershipPage` / `OrgPage` / `UserPage` shapes.
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/PersonalAccessToken' }
+        page: { $ref: '#/components/schemas/PageMeta' }
+
+tags:
+  - name: PersonalAccessTokens
+    description: |
+      Personal access tokens per ADR 0016. Non-interactive bearer
+      credentials for CLI / CI / server-to-server use, distinct from
+      session tokens (which require an interactive `verifyPassword` +
+      optional `verifyMfa` flow). Adds the `pat_` primitive and four
+      management routes; verification is SDK-only (no public
+      `/pats/verify` route — adopters call `verifyPatToken` from
+      their auth middleware).
