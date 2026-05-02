@@ -115,6 +115,16 @@ The application contract still recommends `'usr'` for principal-grant tuples; no
 - The cross-SDK rewrite-rule fixture corpus, which previously ran only against in-memory stores, now runs against Postgres adapters too. This catches a class of bugs (subtle off-by-one in fan-out enumeration, cycle-detection stack lifecycle across awaits) that the in-memory tests can't surface.
 - ADR 0007's "Deferred / Rule storage in Postgres" bullet — about persisting *rule definitions* in Postgres — remains deferred. This ADR addresses *evaluation* against Postgres-stored *tuples*; rule-definition storage in YAML/JSON at construction time is unchanged.
 
+### Connection pinning and read-skew (security-audit-v0.3.md M1)
+
+The pool-backed adapters (Node, Java) MUST acquire a single connection at the start of `check()`'s rule-eval branch and pass it through every `directLookup` / `listByObject` hop. Pre-fix the Node and Java adapters borrowed a fresh pool checkout per hop — a deep `tuple_to_userset` chain under load could fan checkouts across one logical check, producing connection-pool churn proportional to rule depth × fan-out. The single-connection-per-`check()` rule eliminates that fan-out.
+
+Connection pinning does NOT eliminate **read-skew**: a tuple deleted between the start of `check()` and a later hop within the same evaluation may produce a partially consistent answer (e.g. `org.member` resolves but the parent_org tuple it expanded through has since been deleted). The rule-eval algorithm tolerates this — it still returns a deterministic allow/deny — but the matched tuple id may reference a tuple that no longer exists by the time the caller reads the result.
+
+Adopters who require strict snapshot isolation across an entire `check()` call MUST wrap the call in their own `BEGIN ISOLATION LEVEL REPEATABLE READ` / `COMMIT` and pass the resulting connection to the SDK constructor (the caller-owned-connection mode per ADR 0013). v0.3 does not auto-wrap the eval in a transaction because (a) it would force adopters who don't need snapshot isolation to pay the cost, and (b) the read-skew window is generally bounded by the eval's wall-clock duration, which is dominated by single-digit-millisecond round trips. v0.4+ may add an `isolation: 'repeatable_read'` opt-in option; track in M1 follow-up.
+
+The Python and PHP adapters already operate on a single connection per store instance (`PostgresTupleStore(connection=…)`), so M1 does not apply — they were always pinned. The PHP `$pdo` and Python `psycopg.Connection` constructor APIs are unchanged.
+
 ## Deferred
 
 - **SQL push-down** (recursive CTE per rule). v0.4+ optimization once an adopter's rule profile demonstrates the round-trip count is the bottleneck.
