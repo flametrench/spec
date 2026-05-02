@@ -364,10 +364,17 @@ Status updates land here as PRs merge. Format: `<finding-id> · <PR-link> · <da
 
 ## Re-audit gate
 
-Before tagging `spec@v0.3.0`, re-run the focused 2nd-pass audit (task S13) against the patched surface. Specifically verify:
+The focused 2nd-pass review of the patched surface ran 2026-05-01. Findings:
 
-1. C1 — does the patched `checkAny` reject `relations: ['viewer","admin']`?
-2. H2 — does the dummy-hash branch's wall-clock time match the row-exists branch within ±5%?
-3. C2 — would an adopter copying the Hearth pattern post-fix accidentally permit a viewer share to write?
+- **C1 ✅** — patched `checkAny` validates every element of the relations array against `Patterns::RELATION_NAME` before binding; no SQL string concatenation remains in the file.
+- **C2 ✅** — both Hearth backends enforce `verified.relation === 'commenter'` on write paths; agent-side self-share mints `commenter` not `viewer`. The fix also tightens the read path to require `commenter` (Hearth never mints viewer shares); adopters who later add viewer-only shares will need to update both branches together — documented inline.
+- **C3 ❌→🟩** — re-audit caught a constant typo: PHP `InstallController.php`'s advisory-lock literal was `7521751562894049651`, NOT the canonical `0x6865617274686e73 = 7522525896799448691` that Node uses. The two backends were serializing against DIFFERENT lock keys. Fixed in `hearth@99973eb` (corrects the literal AND fixes the misleading "heartheng" comment in both backends — the correct ASCII unpacking is "hearthns").
+- **H2 ✅** — verified across all 4 SDKs that BOTH the missing-row branch AND the structurally-valid-but-not-UUIDv7 (`wireToUuid` failure) branch perform `verifyPasswordHash(DUMMY_PHC_HASH, secret)` before raising. The second branch is easy to miss; all 4 SDKs got it right.
+- **H3 ✅** — `UPDATE pat SET last_used_at = ? WHERE id = ? AND revoked_at IS NULL` confirmed in all 4 SDKs.
+- **H6 ✅** — secret-length cap fires before Argon2id dispatch in all 4 SDKs; the L3 refactor (Node delegating structural check to `isStructurallyValidPatToken`) did NOT drop the H6 cap.
+- **M1 ✅** — Node `withClient` and Java try-with-resources Connection both pin one connection across the rule-eval recursion and release on every return path; `directLookupOn` / `listByObjectOn` only ever reference the explicit param.
+- **M3 ✅** — `PostgresShareStore::createShare` uses `tx(...)`, not `nested(...)`.
+- **M9 ✅** — all 5 `subjectIdToUuid` callsites in PHP/Node/Python/Java pass `subjectType`. Java still has a 1-arg overload for backward compat but no internal caller uses it.
+- **L2 ✅** — three identical PHP implementations of `callerName()` walk past private/protected frames via ReflectionMethod, handle Closure frames (no `function` key), handle top-level functions (no `class`), and fall back to `'tx'` if no public frame is found. No infinite-loop risk.
 
-Each verification gets a one-sentence note on this page under the corresponding finding.
+Net: 1 critical bug caught and fixed (C3 PHP advisory-lock constant); all 32 findings now have a final disposition.
