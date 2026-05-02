@@ -94,9 +94,10 @@ What this specification does not define:
 
 - **v0.1 spec**: shipped. Adopted by sitesource/admin (the first PHP adopter); spec#5 surfaced in adoption and was patched in v0.1.x via ADR 0009.
 - **v0.2 spec**: stable, tagged `v0.2.0`. Surface: rewrite rules (ADR 0007), MFA TOTP/WebAuthn/recovery (ADRs 0008 + 0010), invitation acceptance binding (ADR 0009, also in v0.1.x), org display name + slug (ADR 0011), share tokens (ADR 0012), Postgres adapter transaction nesting (ADR 0013), user display name (ADR 0014), and user enumeration (ADR 0015).
+- **v0.3 spec**: in development. Surface: personal access tokens (ADR 0016) — non-interactive bearer credentials for CLI / CI / server-to-server use, with prefix-routed verification (`pat_…` / `shr_…` / session) and a new `auth.kind` audit discriminator. Targets PHP + Node first (the unblocked registries); Python + Java land code-ready and tagged in lockstep, awaiting registry unblock for publication.
 - **SDKs**: Python / Node / PHP / Java span `v0.2.0`–`v0.2.1` across the family (`ids`, `identity`, `tenancy`, `authz`). Packagist and npm publish the live artifacts; PyPI and Maven Central are bootstrapping (org / credential approvals pending) and will publish once unblocked. Always verify a registry directly before quoting state: `npm view @flametrench/<pkg> versions --json` (note the plural — singular `version` returns only the `latest` dist-tag). The release checklist at `docs/release-checklist.md` is the canonical pre-publish process.
-- **Postgres reference**: `postgres.sql` covers the full v0.1 + v0.2 data model (including the `mfa`, `usr_mfa_policy`, and `shr` tables added in v0.2; `usr.display_name` column also added in v0.2). `postgres-rls.sql` is an optional RLS companion.
-- **Conformance suite**: 27 fixture files, executed by all four SDK families.
+- **Postgres reference**: `postgres.sql` covers the full v0.1 + v0.2 + v0.3-in-development data model (including the `mfa`, `usr_mfa_policy`, and `shr` tables added in v0.2, the `pat` table added in v0.3, and the `usr.display_name` column added in v0.2). `postgres-rls.sql` is an optional RLS companion.
+- **Conformance suite**: 27 fixture files, executed by all four SDK families. v0.3 PAT fixtures land alongside the SDK ports.
 
 ## Structure of this repository
 
@@ -114,7 +115,7 @@ flametrench/spec/
 │   ├── security.md              threat model + adopter responsibilities (normative)
 │   ├── external-idps.md         coexistence with Auth0 / Clerk / Cognito / etc. (non-normative)
 │   └── migrating-to-v0.2.md     upgrade guide for v0.1 adopters
-├── decisions/                   Architecture Decision Records (15 ADRs)
+├── decisions/                   Architecture Decision Records (16 ADRs)
 │   ├── README.md                index + ADR writing guide
 │   ├── 0001 — authorization model
 │   ├── 0002 — tenancy model
@@ -130,14 +131,16 @@ flametrench/spec/
 │   ├── 0012 — share tokens                                 (v0.2)
 │   ├── 0013 — Postgres adapter transaction nesting          (v0.2)
 │   ├── 0014 — user display name                             (v0.2)
-│   └── 0015 — IdentityStore.listUsers                       (v0.2)
+│   ├── 0015 — IdentityStore.listUsers                       (v0.2)
+│   └── 0016 — personal access tokens                         (v0.3)
 ├── reference/                   non-normative implementation artifacts
 │   ├── README.md                conventions; what's normative vs reference
-│   ├── postgres.sql             reference Postgres DDL (v0.1 + v0.2 additive)
+│   ├── postgres.sql             reference Postgres DDL (v0.1 + v0.2 + v0.3 additive)
 │   └── postgres-rls.sql         optional Row-Level Security companion
 ├── openapi/
-│   ├── flametrench-v0.1.yaml    v0.1 wire surface (ADR 0009 patch included)
-│   └── flametrench-v0.2-additions.yaml   MFA additive overlay
+│   ├── flametrench-v0.1.yaml              v0.1 wire surface (ADR 0009 patch included)
+│   ├── flametrench-v0.2-additions.yaml    v0.2 additive overlay (MFA, display names, listUsers)
+│   └── flametrench-v0.3-additions.yaml    v0.3 additive overlay (personal access tokens)
 ├── conformance/
 │   ├── index.json               27-fixture manifest
 │   ├── fixture.schema.json
