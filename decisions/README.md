@@ -35,6 +35,7 @@ ADRs are numbered sequentially from 0001 in the order accepted. Numbers never ch
 | [0014](./0014-user-display-name.md) | User display name (v0.2 — Proposed) | Adds optional `display_name` to `User`; new `updateUser` operation; closes spec#9 |
 | [0015](./0015-list-users.md) | IdentityStore.listUsers (v0.2 — Proposed) | Cursor-paginated user enumeration with status filter and credential-identifier substring; mirrors `listMembers`; closes spec#10 |
 | [0016](./0016-personal-access-tokens.md) | Personal access tokens (v0.3 — Proposed) | New `pat` primitive for non-interactive (CLI / CI / server-to-server) auth; id-then-secret wire format with prefix-routed bearer dispatch; Argon2id storage; `auth.kind` audit discriminator; closes spec#14 |
+| [0017](./0017-postgres-rewrite-rule-evaluation.md) | Postgres rewrite-rule evaluation (v0.3 — Proposed) | `PostgresTupleStore` gains rule-aware `check()` via iterative async expansion (not SQL push-down); Node `evaluate()` becomes async-capable; retires the v0.2 deferral in `docs/authorization.md` |
 
 ## Writing a new ADR
 

@@ -96,7 +96,7 @@ If an application's authorization policy requires any of these derivations, thre
 
 ## Rewrite rules (v0.2)
 
-The design is normative as of v0.2 and is locked in [ADR 0007](../decisions/0007-authorization-rewrite-rules.md). All four SDK families ship in-memory rewrite-rule support in their v0.2 release-candidate. Postgres-backed rule evaluation is deferred to v0.3 — adopters who need Postgres durability today can keep the rules-relevant tuple subset in-memory and use the in-memory `check()` for those queries.
+The design is normative as of v0.2 and is locked in [ADR 0007](../decisions/0007-authorization-rewrite-rules.md). All four SDK families ship in-memory rewrite-rule support in their v0.2 release-candidate. v0.3 retires the Postgres deferral: `PostgresTupleStore.check()` accepts the same `rules` option as `InMemoryTupleStore` and evaluates via iterative async expansion (per [ADR 0017](../decisions/0017-postgres-rewrite-rule-evaluation.md)). Adopters who need Postgres durability with rules can now use `PostgresTupleStore({ pool, rules })` directly — no in-memory shadow workaround required.
 
 ### Why
 

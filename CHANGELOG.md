@@ -9,9 +9,12 @@ All notable spec changes are recorded here. Adopter-facing migration guidance li
 - **OpenAPI v0.3 additions** (`openapi/flametrench-v0.3-additions.yaml`) — four PAT management routes: `POST /v1/users/{usr_id}/pats`, `GET /v1/users/{usr_id}/pats`, `GET /v1/pats/{pat_id}`, `POST /v1/pats/{pat_id}/revoke`. Verification stays SDK-only (no public `/pats/verify`), mirroring the share-token precedent.
 - **Reference Postgres** — new `pat` table with Argon2id `secret_hash`, `usr_id` FK, `name`, `scope TEXT[]`, `expires_at`, `last_used_at`, `revoked_at`, plus three indexes (per-user list, active filter, expiry sweep) and a `pat_touch` trigger. Lookup is by primary key (id), not token hash — contrast with `ses` and `shr`, whose wire formats are opaque.
 - **`identity.md` chapter** — Personal access tokens (v0.3): wire format, bearer routing, normative verification semantics (8-step ordering), lifecycle, operations, `auth.kind` discriminator, cross-SDK parity contract.
+- **ADR 0017** — Postgres rewrite-rule evaluation. Retires the v0.2 deferral in `docs/authorization.md`. `PostgresTupleStore.check()` now accepts the same `rules` option as `InMemoryTupleStore` and evaluates via iterative async expansion (one indexed SELECT per direct lookup / `tuple_to_userset` enumeration, recursive over `computed_userset`). Cycle detection, depth + fan-out bounds, and short-circuit semantics from ADR 0007 are unchanged. SQL push-down via recursive CTEs explicitly rejected for v0.3 — round-trip count isn't the bottleneck on properly-indexed `tup` tables. Revisit in v0.4+ as an opt-in escape hatch.
+- **Node-only API change** — `evaluate()` (the internal rewrite-rule evaluator) becomes async-capable: `DirectLookup` and `ListByObject` callbacks return `Promise<...>`. `InMemoryTupleStore` wraps in `Promise.resolve(...)`; `PostgresTupleStore` issues real async queries. PHP/Python/Java keep synchronous callbacks (no language async coroutine bridge in v0.3).
 
 ### SDK matrix
 - v0.3.0 SDK ports begin with PHP and Node (the unblocked registries). Python and Java implementations land code-ready and tagged but unpublished, pending the same registry blockers that held v0.2.0 (PyPI org approval, Maven Central credential regen).
+- Both v0.3 features (PATs + Postgres rewrite-rules) ship together in each SDK release.
 
 ## [v0.2.0] — 2026-04-30
 
