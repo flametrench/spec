@@ -107,6 +107,8 @@ The change is additive — every `subject_type='usr'` row from v0.1/v0.2 continu
 
 The application contract still recommends `'usr'` for principal-grant tuples; non-`'usr'` subject types are reserved for the `tuple_to_userset` hop pattern. Group-subject expansion (`'grp'`) and per-prefix authorization remain future work.
 
+> ⚠️ **Adopter footgun (security-audit-v0.3.md F6).** `tuple_to_userset` does NOT pin the expected `subject_type` of the hop. With the v0.3 relaxation, an adopter who has both `(org_X, parent_org, proj_Y)` and `(aud_Z, parent_org, proj_Y)` in `tup` will recurse into BOTH subject types when `proj.viewer = … | tuple_to_userset(parent_org → org.viewer)` evaluates — even though the rule names `org.viewer` as the next-hop relation, the parent_org tuple set itself is enumerated without subject-type filtering. The recursion then attempts `(aud_Z, viewer, org_…)` lookups that miss harmlessly, but the wasted round-trip is real. Adopters MUST keep `subject_type` discipline at write time: only insert `(org, parent_org, proj)` tuples, never `(aud, parent_org, proj)`. The conformance suite does not catch this because it tests rule-correct adopter writes; route-layer validation of incoming `subject_type` on tuple writes is the adopter's responsibility. v0.4+ may add a typed `tuple_to_userset(parent_org @ org → org.viewer)` syntax that pins the expected hop subject type at rule definition time.
+
 ## Consequences
 
 - `PostgresTupleStore` becomes equivalent to `InMemoryTupleStore` in expressive power. Adopters with rules-based authorization can use Postgres durability without the in-memory shadow workaround.

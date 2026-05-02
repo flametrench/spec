@@ -169,6 +169,8 @@ Implementations MAY parallelize sub-evaluations within a single rule but MUST pr
 
 Bounds are configurable per-store. Apps with deep rule chains or wide fan-outs SHOULD raise the limits explicitly rather than silently encountering them in production.
 
+> ⚠️ **Adopter footgun: `tuple_to_userset` does not pin hop subject_type** (security-audit-v0.3.md F6). The relaxed v0.3 schema allows any `subject_type` matching `^[a-z]{2,6}$` in `tup`. A `tuple_to_userset(parent_org → org.viewer)` rule enumerates EVERY tuple with `relation='parent_org'` on the object, regardless of subject type, then recurses into each. If an adopter has both `(org_X, parent_org, proj_Y)` and `(aud_Z, parent_org, proj_Y)` tuples, the recursion attempts `(usr, viewer, aud_Z)` lookups — they miss harmlessly, but the wasted round-trip is real and the logical surprise is worse. Adopters MUST keep subject-type discipline at write time: only insert tuples whose subject_type matches the rule's intended hop type. The conformance suite cannot catch this because it tests rule-correct adopter writes; route-layer validation of incoming `subject_type` on tuple writes is the adopter's responsibility. v0.4+ may add a typed `tuple_to_userset(parent_org @ org → org.viewer)` syntax that pins the expected hop subject_type at rule definition time.
+
 ### Cycle detection
 
 Rules form a graph; cycles are possible. Implementations MUST detect them per-evaluation by tracking the stack of `(relation, object)` frames visited. A repeat frame returns `denied` for that branch (the cycle adds no information) without raising. Other branches continue.
