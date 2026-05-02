@@ -475,7 +475,13 @@ Revoke is idempotent: revoking an already-revoked token returns the existing row
   - `revokePat(pat_id)` → `PersonalAccessToken`. Terminal-state transition; idempotent.
   - `verifyPatToken(token)` → `VerifiedPat { pat_id, usr_id, scope, prefix }`. Throws `InvalidPatTokenError` / `PatExpiredError` / `PatRevokedError` per the ordering above.
 
-Authorization gating is the adopter's responsibility — typically "the requesting principal owns `usr_id`, OR is a sysadmin acting on the user's behalf." The SDK does not enforce visibility on `getPat` / `listPatsForUser` / `revokePat`.
+> ⚠️ **CRITICAL — adopter MUST gate `getPat` / `listPatsForUser` / `revokePat` at the route layer.** The SDK does NOT enforce visibility on these methods. Without a route-layer check, any authenticated user can:
+>
+> - **`getPat`**: leak any other user's PAT existence, scope, expiry, and last-used timestamp.
+> - **`listPatsForUser`**: enumerate any user's full PAT inventory.
+> - **`revokePat`**: terminate any user's PAT — locking the legitimate owner out of their own automation.
+>
+> The required gate is "the requesting principal owns `usr_id`, OR is a sysadmin acting on the user's behalf." Apply it as a route middleware or in the handler before calling the SDK. (security-audit-v0.3.md H7.)
 
 ### `auth.kind` audit discriminator
 
