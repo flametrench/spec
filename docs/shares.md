@@ -110,6 +110,26 @@ verified = shareStore.verifyShareToken(presented_token)
 
 The verified handle does **not** pass through `check`. The share verify *is* the authorization decision for that bearer at that resource. If a host wants a share-bearer to also acquire normal authenticated permissions (e.g. "this share lets you in, AND if you log in you also get edit access"), that's two distinct flows: verify the share to render the read view, and run the normal session+tuple check separately for the edit surface.
 
+### Adopter MUST: enforce the relation field
+
+`verifyShareToken` returns the relation the share was minted with, but the **adopter MUST** check `verified.relation` against the action being authorized. The SDK does NOT gate by intent — `verifyShareToken` only proves the token resolves to a non-revoked, non-expired, non-consumed (for single-use) share for `(object_type, object_id, relation)`. It does not say "this bearer can perform action X."
+
+Concretely:
+
+```
+// Read endpoint
+verified = shareStore.verifyShareToken(token)
+if verified.relation != 'viewer' && verified.relation != 'commenter':
+    return 403  // wrong relation for read access
+
+// Write endpoint
+verified = shareStore.verifyShareToken(token)
+if verified.relation != 'commenter':
+    return 403  // wrong relation for write access — viewer-only shares MUST NOT post comments
+```
+
+A common adopter footgun (security-audit-v0.3.md C2): mint shares with `relation='viewer'`, build read AND write endpoints behind the same share-auth middleware, and never check the relation on the write path. The result is a silent over-privilege — viewer-only shares authorize writes. Adopters that need distinct intents MUST mint distinct relations and gate each endpoint accordingly.
+
 ## Storage notes
 
 The reference Postgres schema at [`spec/reference/postgres.sql`](../reference/postgres.sql) places `shr` alongside `tup` in the authorization capability section. Three indexes ship in the reference DDL:
