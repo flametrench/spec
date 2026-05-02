@@ -34,6 +34,7 @@ ADRs are numbered sequentially from 0001 in the order accepted. Numbers never ch
 | [0013](./0013-postgres-adapter-transaction-nesting.md) | Postgres adapter transaction nesting (v0.2 — Proposed) | Adapters detect outer transactions and use `SAVEPOINT ft_<method>_<random>` instead of `BEGIN`; enables multi-SDK-call atomicity; closes laravel#1 |
 | [0014](./0014-user-display-name.md) | User display name (v0.2 — Proposed) | Adds optional `display_name` to `User`; new `updateUser` operation; closes spec#9 |
 | [0015](./0015-list-users.md) | IdentityStore.listUsers (v0.2 — Proposed) | Cursor-paginated user enumeration with status filter and credential-identifier substring; mirrors `listMembers`; closes spec#10 |
+| [0016](./0016-personal-access-tokens.md) | Personal access tokens (v0.3 — Proposed) | New `pat` primitive for non-interactive (CLI / CI / server-to-server) auth; id-then-secret wire format with prefix-routed bearer dispatch; Argon2id storage; `auth.kind` audit discriminator; closes spec#14 |
 
 ## Writing a new ADR
 
