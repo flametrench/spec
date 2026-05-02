@@ -13,7 +13,7 @@
       "input": {
         "token": "pat_0190f2a81b3c7abc8123456789abcdef_x"
       },
-      "expected": { "structurally_valid": true }
+      "expected": { "result": true }
     },
     {
       "id": "pat.token-format.well-formed-typical",
@@ -21,13 +21,13 @@
       "input": {
         "token": "pat_0190f2a81b3c7abc8123456789abcdef_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_aBcDe"
       },
-      "expected": { "structurally_valid": true }
+      "expected": { "result": true }
     },
     {
       "id": "pat.token-format.rejects-empty-string",
       "description": "Empty bearer is structurally invalid.",
       "input": { "token": "" },
-      "expected": { "structurally_valid": false }
+      "expected": { "result": false }
     },
     {
       "id": "pat.token-format.rejects-wrong-prefix",
@@ -35,7 +35,7 @@
       "input": {
         "token": "shr_0190f2a81b3c7abc8123456789abcdef_someSecretValue"
       },
-      "expected": { "structurally_valid": false }
+      "expected": { "result": false }
     },
     {
       "id": "pat.token-format.rejects-no-prefix",
@@ -43,7 +43,7 @@
       "input": {
         "token": "0190f2a81b3c7abc8123456789abcdef_someSecretValue"
       },
-      "expected": { "structurally_valid": false }
+      "expected": { "result": false }
     },
     {
       "id": "pat.token-format.rejects-uppercase-hex",
@@ -51,7 +51,7 @@
       "input": {
         "token": "pat_0190F2A81B3C7ABC8123456789ABCDEF_secret"
       },
-      "expected": { "structurally_valid": false }
+      "expected": { "result": false }
     },
     {
       "id": "pat.token-format.rejects-short-id",
@@ -59,7 +59,7 @@
       "input": {
         "token": "pat_0190f2a81b3c_secret"
       },
-      "expected": { "structurally_valid": false }
+      "expected": { "result": false }
     },
     {
       "id": "pat.token-format.rejects-long-id",
@@ -67,7 +67,7 @@
       "input": {
         "token": "pat_0190f2a81b3c7abc8123456789abcdef00_secret"
       },
-      "expected": { "structurally_valid": false }
+      "expected": { "result": false }
     },
     {
       "id": "pat.token-format.rejects-missing-separator",
@@ -75,7 +75,7 @@
       "input": {
         "token": "pat_0190f2a81b3c7abc8123456789abcdefxsecret"
       },
-      "expected": { "structurally_valid": false }
+      "expected": { "result": false }
     },
     {
       "id": "pat.token-format.rejects-empty-secret",
@@ -83,7 +83,7 @@
       "input": {
         "token": "pat_0190f2a81b3c7abc8123456789abcdef_"
       },
-      "expected": { "structurally_valid": false }
+      "expected": { "result": false }
     },
     {
       "id": "pat.token-format.rejects-non-hex-id",
@@ -91,7 +91,7 @@
       "input": {
         "token": "pat_g190f2a81b3c7abc8123456789abcdef_secret"
       },
-      "expected": { "structurally_valid": false }
+      "expected": { "result": false }
     }
   ]
 }

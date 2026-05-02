@@ -13,7 +13,7 @@
       "input": {
         "token": "pat_0190f2a81b3c7abc8123456789abcdef_secretSegmentHere"
       },
-      "expected": { "auth_kind": "pat" }
+      "expected": { "result": "pat" }
     },
     {
       "id": "pat.bearer-routing.share-prefix",
@@ -21,7 +21,7 @@
       "input": {
         "token": "shr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_someShareSecret"
       },
-      "expected": { "auth_kind": "share" }
+      "expected": { "result": "share" }
     },
     {
       "id": "pat.bearer-routing.session-opaque-token",
@@ -29,7 +29,7 @@
       "input": {
         "token": "G7Pc1xqVz4nN8mYf2tWbE3kLjRsT5vUaB6cD9eFgHiJk"
       },
-      "expected": { "auth_kind": "session" }
+      "expected": { "result": "session" }
     },
     {
       "id": "pat.bearer-routing.session-jwt-shape",
@@ -37,7 +37,7 @@
       "input": {
         "token": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.signaturepart"
       },
-      "expected": { "auth_kind": "session" }
+      "expected": { "result": "session" }
     },
     {
       "id": "pat.bearer-routing.no-cross-routing-malformed-pat",
@@ -45,7 +45,7 @@
       "input": {
         "token": "pat_0190f2a81b3c7abc8123456789abcdef"
       },
-      "expected": { "auth_kind": "pat" }
+      "expected": { "result": "pat" }
     },
     {
       "id": "pat.bearer-routing.no-cross-routing-malformed-share",
@@ -53,7 +53,7 @@
       "input": {
         "token": "shr_garbage"
       },
-      "expected": { "auth_kind": "share" }
+      "expected": { "result": "share" }
     }
   ]
 }
