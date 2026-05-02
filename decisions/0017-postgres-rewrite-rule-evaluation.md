@@ -89,6 +89,24 @@ The v0.2 conformance fixture `empty-rules-equals-v01.json` is now load-bearing f
 
 The full v0.2 rewrite-rules fixture corpus (`union-of-direct.json`, `computed-userset-chain.json`, `tuple-to-userset-parent.json`, `cycle-self-reference.json`, `depth-limit-exceeded.json`, `fan-out-limit-exceeded.json`) MUST also pass against `PostgresTupleStore` configured with the corresponding rule set. SDK conformance runners gain a `--postgres` mode that exercises the same fixtures against a real database.
 
+### Schema change: relax `subject_type` constraint
+
+`tuple_to_userset` requires object-to-object tuples — for example, `(org_X, parent_org, proj_Y)` where the subject is an org, not a user. The v0.1/v0.2 reference schema constrained `subject_type IN ('usr')`, which silently blocked this in any Postgres deployment and was one of the gaps that forced the in-memory shadow workaround for v0.2 rule users.
+
+v0.3 reference schema relaxes the constraint to match the existing `object_type` pattern:
+
+```sql
+-- v0.1/v0.2:
+CHECK (subject_type IN ('usr'))
+
+-- v0.3 (ADR 0017):
+CHECK (subject_type ~ '^[a-z]{2,6}$')
+```
+
+The change is additive — every `subject_type='usr'` row from v0.1/v0.2 continues to satisfy the new constraint. Existing deployments upgrade with a single `ALTER TABLE ... DROP CONSTRAINT ... ADD CONSTRAINT ...` migration; the upgrade is included in the v0.2→v0.3 migration document.
+
+The application contract still recommends `'usr'` for principal-grant tuples; non-`'usr'` subject types are reserved for the `tuple_to_userset` hop pattern. Group-subject expansion (`'grp'`) and per-prefix authorization remain future work.
+
 ## Consequences
 
 - `PostgresTupleStore` becomes equivalent to `InMemoryTupleStore` in expressive power. Adopters with rules-based authorization can use Postgres durability without the in-memory shadow workaround.
