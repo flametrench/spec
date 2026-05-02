@@ -2,6 +2,17 @@
 
 All notable spec changes are recorded here. Adopter-facing migration guidance lives in [`docs/migrating-to-v0.2.md`](docs/migrating-to-v0.2.md). Per-SDK changelogs live in their respective repos; this file tracks the spec contract only.
 
+## [v0.3.0] — Unreleased (in development)
+
+### Added
+- **ADR 0016** — Personal access tokens. New `pat_` primitive for non-interactive (CLI / CI / server-to-server) auth. Wire format `pat_<32hex-id>_<base64url-secret>` (Stripe-style id-then-secret); the auth middleware prefix-routes incoming bearer tokens to session / share / PAT verifiers. Argon2id storage at the cred-password parameter floor; conflated `InvalidPatTokenError` shape on missing-row vs wrong-secret to avoid a token-presence timing oracle. New `auth.kind ∈ {session, pat, share, system}` audit discriminator (additive). Closes [`spec#14`](https://github.com/flametrench/spec/issues/14).
+- **OpenAPI v0.3 additions** (`openapi/flametrench-v0.3-additions.yaml`) — four PAT management routes: `POST /v1/users/{usr_id}/pats`, `GET /v1/users/{usr_id}/pats`, `GET /v1/pats/{pat_id}`, `POST /v1/pats/{pat_id}/revoke`. Verification stays SDK-only (no public `/pats/verify`), mirroring the share-token precedent.
+- **Reference Postgres** — new `pat` table with Argon2id `secret_hash`, `usr_id` FK, `name`, `scope TEXT[]`, `expires_at`, `last_used_at`, `revoked_at`, plus three indexes (per-user list, active filter, expiry sweep) and a `pat_touch` trigger. Lookup is by primary key (id), not token hash — contrast with `ses` and `shr`, whose wire formats are opaque.
+- **`identity.md` chapter** — Personal access tokens (v0.3): wire format, bearer routing, normative verification semantics (8-step ordering), lifecycle, operations, `auth.kind` discriminator, cross-SDK parity contract.
+
+### SDK matrix
+- v0.3.0 SDK ports begin with PHP and Node (the unblocked registries). Python and Java implementations land code-ready and tagged but unpublished, pending the same registry blockers that held v0.2.0 (PyPI org approval, Maven Central credential regen).
+
 ## [v0.2.0] — 2026-04-30
 
 v0.2.0 stable cutoff. No surface changes vs `v0.2.0-rc.6`; this release flips ADRs 0007–0015 from Proposed to Accepted, snaps the four SDK families to `v0.2.0` (Python / Node / PHP / Java for `ids` / `identity` / `tenancy` / `authz`), and bumps the OpenAPI overlay version field from `0.2.0-rc.6` to `0.2.0`.

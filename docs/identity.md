@@ -416,6 +416,89 @@ A `fixtures/identity/mfa/` corpus will land alongside the v0.2 SDK ports, anchor
 
 See [ADR 0008](../decisions/0008-mfa.md) for the full design rationale, alternatives considered, and explicit deferrals.
 
+## Personal access tokens (v0.3)
+
+A personal access token (PAT) is a long-lived bearer credential bound to a `usr_id`, intended for non-interactive use — CLI tools, CI pipelines, server-to-server calls. PATs are a separate primitive from credentials and from sessions. They have a different lifecycle (no rotation, no `replaces` chain), a different verification path (the token IS the proof; no interactive challenge), and a different audit shape (`auth.kind = 'pat'`).
+
+### Wire format
+
+The full bearer token is `pat_<32hex-id>_<base64url-secret>`:
+
+  - `pat_` — the type prefix used for routing (see *Bearer routing* below).
+  - `<32hex-id>` — the wire-format encoding of the PAT row's primary key. Indexed; the lookup handle.
+  - `_<base64url-secret>` — the secret half. ≥256 bits of entropy, RFC 4648 §5 base64url with no padding. Verified by Argon2id against the stored hash.
+
+The plaintext token is returned ONCE in the `createPat` response and never again. The server stores only an Argon2id hash of the secret segment (parameters at the spec floor pinned for cred passwords by ADR 0004).
+
+### Bearer routing
+
+v0.3 broadens what the `Authorization: Bearer` header may carry. The auth middleware MUST inspect the token prefix and dispatch to the matching verifier:
+
+  - `pat_<32hex>_<…>` → `verifyPatToken` (this section)
+  - `shr_<32hex>_<…>` → `verifyShareToken` (ADR 0012)
+  - any other prefix → session resolver (v0.1)
+
+Mis-routing is a 401 with `code: auth.token_format_unrecognized`. Verifiers MUST NOT attempt cross-form decoding (e.g. trying a `pat_…` string against the session resolver) — bearer types do not overlap by design, and silent fallbacks would mask legitimate token-format errors.
+
+The `@flametrench/server` package ships a `resolveBearer(token, { sessionStore, patStore, shareStore })` helper that implements this dispatch; PHP / Python / Java equivalents follow the same signature.
+
+### Verification semantics
+
+Normative ordering for `verifyPatToken`:
+
+  1. Inspect the prefix; reject non-`pat_…` tokens with `auth.token_format_unrecognized`.
+  2. Split on the first underscore after `pat_<32hex>` to recover the id segment and the secret segment.
+  3. Look up the row by id (`SELECT … WHERE id = $id`).
+  4. If the row is missing, return `InvalidPatTokenError`. The error message MUST conflate "no such row" with "wrong secret" to avoid a token-presence timing oracle.
+  5. If `revoked_at IS NOT NULL`, return `PatRevokedError`.
+  6. If `expires_at IS NOT NULL` and `expires_at <= now()`, return `PatExpiredError`.
+  7. Argon2id-verify the secret segment against `secret_hash`. Mismatch returns `InvalidPatTokenError` (same shape as step 4).
+  8. Update `last_used_at`. The SDK MAY coalesce these writes within a configurable window (60s default) to avoid a write-per-request hot path.
+
+The error ordering — revoked > expired > invalid_secret — matches the share-token convention from ADR 0012.
+
+### Lifecycle
+
+A PAT row is one of three states:
+
+  - `active` — present, not expired, not revoked.
+  - `expired` — past `expires_at`. Terminal: a PAT cannot return to active.
+  - `revoked` — `revokePat` was called. Terminal: re-issuance creates a new row, NOT a `replaces` chain entry. (Cred lineage tracking is for interactive credentials where the user is rotating an identifier; PATs are bearer secrets with no identity continuity to preserve.)
+
+Revoke is idempotent: revoking an already-revoked token returns the existing row.
+
+### Operations
+
+  - `createPat({ usr_id, name, scope, expires_at? })` → `{ pat, token }`. The `token` is the plaintext; the caller MUST capture it immediately. `name` is a human label (≤120 chars); `scope` is an application-defined `string[]`; `expires_at` is optional (no expiry when omitted).
+  - `getPat(pat_id)` → `PersonalAccessToken`. Metadata only — secret hash never serialized.
+  - `listPatsForUser(usr_id, *, cursor, limit, status?)` → `Page<PersonalAccessToken>`. Cursor-paginated, mirrors `listMembers` shape. Default returns all statuses; pass `status='active'` to filter.
+  - `revokePat(pat_id)` → `PersonalAccessToken`. Terminal-state transition; idempotent.
+  - `verifyPatToken(token)` → `VerifiedPat { pat_id, usr_id, scope, prefix }`. Throws `InvalidPatTokenError` / `PatExpiredError` / `PatRevokedError` per the ordering above.
+
+Authorization gating is the adopter's responsibility — typically "the requesting principal owns `usr_id`, OR is a sysadmin acting on the user's behalf." The SDK does not enforce visibility on `getPat` / `listPatsForUser` / `revokePat`.
+
+### `auth.kind` audit discriminator
+
+Adopters that emit audit-log records SHOULD populate an `auth.kind` field with one of:
+
+  - `session` — interactive bearer minted via `verifyPassword` (+ optional `verifyMfa`).
+  - `pat` — bearer resolved by `verifyPatToken`.
+  - `share` — bearer resolved by `verifyShareToken` (ADR 0012).
+  - `system` — operator-initiated action with no human bearer (cron, sysadmin script).
+
+The field is additive: pre-v0.3 audit records that omit `auth.kind` remain valid. Adopters that track auditable mutation paths SHOULD start populating it before issuing PATs in production, so an attacker abusing a leaked PAT can be distinguished in the audit trail from one abusing a hijacked session.
+
+### Cross-SDK parity contract
+
+A `fixtures/identity/pat/` corpus lands alongside the v0.3 SDK ports, anchored on:
+
+  - Issuance: `createPat` returns a token of the documented wire format; `secret_hash` is Argon2id at floor parameters; `name` and `scope` round-trip.
+  - Verify: each error class (`InvalidPatTokenError` for missing row, `InvalidPatTokenError` for wrong secret, `PatExpiredError` for past `expires_at`, `PatRevokedError` for terminal) fires under the right conditions, in the right ordering.
+  - Revoke: idempotent; revoked tokens fail `verifyPatToken` with `PatRevokedError` thereafter.
+  - Audit: `auth.kind = 'pat'` shape matches across SDKs.
+
+See [ADR 0016](../decisions/0016-personal-access-tokens.md) for the full design rationale, alternatives considered, and explicit deferrals.
+
 ## Conformance fixtures
 
 The following fixtures are REQUIRED for identity interoperability across conforming implementations:
