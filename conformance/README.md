@@ -19,11 +19,23 @@ spec/conformance/
     │   ├── decode-reject.json
     │   ├── is-valid.json
     │   └── type-of.json
-    ├── identity/                  ← stateless identity fixtures
-    │   └── argon2id.json
-    ├── tenancy/                   ← placeholder; future SDK layers
-    │   └── README.md
-    └── authorization/             ← placeholder; future SDK layers
+    ├── identity/                  ← identity fixtures (v0.1 + v0.2 + v0.3)
+    │   ├── argon2id.json                  ← v0.1: PHC verify
+    │   ├── list-users.json                ← v0.2 (ADR 0015): cursor-paginated enumeration
+    │   ├── user-display-name.json         ← v0.2 (ADR 0014): display_name + updateUser
+    │   ├── mfa/                           ← v0.2 (ADR 0008 / ADR 0010): factor + verify
+    │   │   ├── totp-rfc6238.json
+    │   │   ├── recovery-code-format.json
+    │   │   ├── webauthn-assertion.json
+    │   │   ├── webauthn-counter-decrease-rejected.json
+    │   │   └── webauthn-assertion-algorithms.json   ← v0.3: ES256 + RS256 + EdDSA
+    │   └── pat/                           ← v0.3 (ADR 0016): personal access tokens
+    │       ├── token-format.json
+    │       └── bearer-prefix-routing.json
+    ├── authorization/
+    │   └── rewrite-rules/                 ← v0.2 (ADR 0007): subset of Zanzibar userset_rewrite
+    │       └── empty-rules-equals-v01.json
+    └── tenancy/                   ← placeholder; future SDK layers
         └── README.md
 ```
 
