@@ -131,7 +131,7 @@ This is a **canonical discriminator vocabulary** for the spec — `auth.kind ∈
 
 - `scope` is a string array; spec does not pin a vocabulary. Adopters define their own (`cloud:read`, `org:admin`, etc.). Empty array is allowed and means "no permissions" — useful as a placeholder during issuance ceremonies.
 - `expires_at` MUST be in the future at create time when set, MUST be no more than 365 days from `created_at` when set. Implementations MAY enforce a tighter cap. `null` means "never expires" — adopters concerned about long-lived secrets MAY refuse to issue null-expiry PATs at the application layer.
-- `name` MUST be 1–100 characters. Adopters MUST NOT use it for authorization decisions; it's display-only.
+- `name` MUST be 1–120 Unicode code units. SDKs MUST count code units (NOT bytes) — a 60-character Japanese label is 60 code units, regardless of UTF-8 byte length. Adopters MUST NOT use `name` for authorization decisions; it's display-only. (security-audit-v0.3.md H4: pre-spec-revision the cap was inconsistent — 1–100 here, ≤120 in identity.md, 1–120 enforced by all 4 SDKs but PHP byte-counted. Reconciled to 120 code units everywhere.)
 - `usr_id` MUST refer to a non-revoked `usr`. PATs auto-revoke when their owner is revoked (cascade in `cascadeRevokeSubject`).
 - The secret MUST be at least 32 random bytes (256 bits of entropy). Implementations MAY produce longer secrets.
 - Secret storage MUST use Argon2id with parameters at or above the `cred`-password floor (ADR 0004 references). Constant-time comparison is enforced by Argon2id verify.
