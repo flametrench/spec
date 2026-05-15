@@ -1,7 +1,7 @@
 # 0016 — Personal access tokens (PATs) for non-interactive auth
 
-**Status:** Proposed
-**Date:** 2026-05-02
+**Status:** Accepted
+**Date:** 2026-05-02 (accepted 2026-05-15)
 **Targets:** v0.3.0
 
 ## Context

@@ -34,7 +34,7 @@ Flametrench v0.1 covers three capabilities. Detailed specs live in [`docs/identi
 
 ## What v0.2 adds
 
-The spec is at `v0.2.0`, stable. SDK package versions vary slightly across language families: as of 2026-05-01, Node `@flametrench/{identity,tenancy,authz}` are at `0.2.1` (a patch republish to ship the ADR 0013 savepoint cooperation that `0.2.0`'s built artifacts had missing — see `docs/release-checklist.md`); PHP / Python / Java SDKs are at `0.2.0`. The patch level moves independently; the spec version is the family marker. The v0.2 work splits across nine ADRs (0007–0015) and one backport:
+The spec is at `v0.3.0`, stable. SDK package versions are at `0.3.0` across all four families (`ids`, `identity`, `tenancy`, `authz`). The v0.2 work splits across nine ADRs (0007–0015) and one backport:
 
 **Authorization rewrite rules (ADR 0007).** A subset of Zanzibar's `userset_rewrite`: the three node types `this`, `computed_userset`, and `tuple_to_userset`, composed via union. Cycle detection and depth/fan-out bounds (8 / 1024). Rules ride on top of v0.1's exact-match `check()` — when no rules are registered, behavior is byte-identical to v0.1.
 
@@ -93,11 +93,11 @@ What this specification does not define:
 ## Status
 
 - **v0.1 spec**: shipped. Adopted by sitesource/admin (the first PHP adopter); spec#5 surfaced in adoption and was patched in v0.1.x via ADR 0009.
-- **v0.2 spec**: stable, tagged `v0.2.0`. Surface: rewrite rules (ADR 0007), MFA TOTP/WebAuthn/recovery (ADRs 0008 + 0010), invitation acceptance binding (ADR 0009, also in v0.1.x), org display name + slug (ADR 0011), share tokens (ADR 0012), Postgres adapter transaction nesting (ADR 0013), user display name (ADR 0014), and user enumeration (ADR 0015).
-- **v0.3 spec**: in development. Surface: personal access tokens (ADR 0016) — non-interactive bearer credentials for CLI / CI / server-to-server use, with prefix-routed verification (`pat_…` / `shr_…` / session) and a new `auth.kind` audit discriminator. Targets PHP + Node first (the unblocked registries); Python + Java land code-ready and tagged in lockstep, awaiting registry unblock for publication.
-- **SDKs**: Python / Node / PHP / Java span `v0.2.0`–`v0.2.1` across the family (`ids`, `identity`, `tenancy`, `authz`). Packagist and npm publish the live artifacts; PyPI and Maven Central are bootstrapping (org / credential approvals pending) and will publish once unblocked. Always verify a registry directly before quoting state: `npm view @flametrench/<pkg> versions --json` (note the plural — singular `version` returns only the `latest` dist-tag). The release checklist at `docs/release-checklist.md` is the canonical pre-publish process.
-- **Postgres reference**: `postgres.sql` covers the full v0.1 + v0.2 + v0.3-in-development data model (including the `mfa`, `usr_mfa_policy`, and `shr` tables added in v0.2, the `pat` table added in v0.3, and the `usr.display_name` column added in v0.2). `postgres-rls.sql` is an optional RLS companion.
-- **Conformance suite**: 27 fixture files, executed by all four SDK families. v0.3 PAT fixtures land alongside the SDK ports.
+- **v0.2 spec**: stable, tagged `v0.2.0` (2026-04-30). Surface: rewrite rules (ADR 0007), MFA TOTP/WebAuthn/recovery (ADRs 0008 + 0010), invitation acceptance binding (ADR 0009, also in v0.1.x), org display name + slug (ADR 0011), share tokens (ADR 0012), Postgres adapter transaction nesting (ADR 0013), user display name (ADR 0014), and user enumeration (ADR 0015).
+- **v0.3 spec**: stable, tagged `v0.3.0` (2026-05-15). Surface: personal access tokens (ADR 0016) — non-interactive bearer credentials for CLI / CI / server-to-server use, with prefix-routed verification (`pat_…` / `shr_…` / session) and a new `auth.kind` audit discriminator; Postgres-backed rewrite-rule evaluation (ADR 0017) — `PostgresTupleStore.check()` accepts the same `rules` option as `InMemoryTupleStore`, retiring the v0.2 in-memory-shadow workaround. The v0.3 security audit (32 findings) is closed: 22 fixed in code, 7 spec-documented, 2 explicit v0.4 deferrals — see [`docs/security-audit-v0.3.md`](docs/security-audit-v0.3.md). Migration guidance: [`docs/migrating-to-v0.3.md`](docs/migrating-to-v0.3.md).
+- **SDKs**: Python / Node / PHP / Java span `v0.3.0` across the family (`ids`, `identity`, `tenancy`, `authz`). Packagist and npm publish the live artifacts; PyPI and Maven Central are bootstrapping (org / credential approvals pending) and will publish once unblocked. Always verify a registry directly before quoting state: `npm view @flametrench/<pkg> versions --json` (note the plural — singular `version` returns only the `latest` dist-tag). The release checklist at `docs/release-checklist.md` is the canonical pre-publish process.
+- **Postgres reference**: `postgres.sql` covers the full v0.1 + v0.2 + v0.3 data model (including the `mfa`, `usr_mfa_policy`, and `shr` tables added in v0.2, the `pat` table added in v0.3, and the `usr.display_name` column added in v0.2). `postgres-rls.sql` is an optional RLS companion. v0.3 also relaxes the `tup.subject_type` check constraint from a hard enum to `^[a-z]{2,6}$` to support `pat` and adopter-defined subject types in rewrite rules — see `migrating-to-v0.3.md` for the migration SQL.
+- **Conformance suite**: 29 fixture files (27 v0.1/v0.2 + 2 v0.3 PAT fixtures), executed by all four SDK families.
 
 ## Structure of this repository
 
@@ -113,9 +113,12 @@ flametrench/spec/
 │   ├── authorization.md         authorization capability (normative)
 │   ├── shares.md                share tokens (v0.2; ADR 0012)
 │   ├── security.md              threat model + adopter responsibilities (normative)
+│   ├── security-audit-v0.3.md   v0.3 security audit — 32 findings + remediation table
+│   ├── release-checklist.md     pre-publish process; required reading before any version bump
 │   ├── external-idps.md         coexistence with Auth0 / Clerk / Cognito / etc. (non-normative)
-│   └── migrating-to-v0.2.md     upgrade guide for v0.1 adopters
-├── decisions/                   Architecture Decision Records (16 ADRs)
+│   ├── migrating-to-v0.2.md     upgrade guide for v0.1 adopters
+│   └── migrating-to-v0.3.md     upgrade guide for v0.2 adopters
+├── decisions/                   Architecture Decision Records (17 ADRs)
 │   ├── README.md                index + ADR writing guide
 │   ├── 0001 — authorization model
 │   ├── 0002 — tenancy model
@@ -132,7 +135,8 @@ flametrench/spec/
 │   ├── 0013 — Postgres adapter transaction nesting          (v0.2)
 │   ├── 0014 — user display name                             (v0.2)
 │   ├── 0015 — IdentityStore.listUsers                       (v0.2)
-│   └── 0016 — personal access tokens                         (v0.3)
+│   ├── 0016 — personal access tokens                         (v0.3)
+│   └── 0017 — Postgres rewrite-rule evaluation               (v0.3)
 ├── reference/                   non-normative implementation artifacts
 │   ├── README.md                conventions; what's normative vs reference
 │   ├── postgres.sql             reference Postgres DDL (v0.1 + v0.2 + v0.3 additive)
@@ -142,7 +146,7 @@ flametrench/spec/
 │   ├── flametrench-v0.2-additions.yaml    v0.2 additive overlay (MFA, display names, listUsers)
 │   └── flametrench-v0.3-additions.yaml    v0.3 additive overlay (personal access tokens)
 ├── conformance/
-│   ├── index.json               27-fixture manifest
+│   ├── index.json               29-fixture manifest
 │   ├── fixture.schema.json
 │   ├── fixtures/                cross-SDK fixture corpus
 │   └── (validator + harness in .github/scripts)

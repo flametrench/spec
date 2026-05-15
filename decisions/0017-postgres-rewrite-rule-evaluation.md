@@ -1,8 +1,8 @@
 # 0017. Postgres rewrite-rule evaluation
 
-Status: Proposed (v0.3 — in development)
+Status: Accepted (v0.3.0)
 
-Date: 2026-05-01
+Date: 2026-05-01 (accepted 2026-05-15)
 
 ## Context
 

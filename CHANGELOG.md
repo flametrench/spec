@@ -1,8 +1,10 @@
 # Changelog
 
-All notable spec changes are recorded here. Adopter-facing migration guidance lives in [`docs/migrating-to-v0.2.md`](docs/migrating-to-v0.2.md). Per-SDK changelogs live in their respective repos; this file tracks the spec contract only.
+All notable spec changes are recorded here. Adopter-facing migration guidance lives in [`docs/migrating-to-v0.3.md`](docs/migrating-to-v0.3.md) (and [`docs/migrating-to-v0.2.md`](docs/migrating-to-v0.2.md) for v0.1 → v0.2). Per-SDK changelogs live in their respective repos; this file tracks the spec contract only.
 
-## [v0.3.0] — Unreleased (in development)
+## [v0.3.0] — 2026-05-15
+
+v0.3.0 stable cutoff. Flips ADRs 0016 (personal access tokens) and 0017 (Postgres rewrite-rule evaluation) from Proposed to Accepted. SDK families snap to v0.3.0 across PHP / Node / Python / Java for `ids` / `identity` / `authz`; `tenancy` bumps from 0.2.1 to 0.3.0 (Node) for SDK matrix uniformity — no surface changes in tenancy. The full v0.3 security audit (32 findings) is closed: 22 fixed in code, 7 spec-documented, 2 explicit v0.4 deferrals (L4, F2). Canonical remediation table at [`docs/security-audit-v0.3.md`](docs/security-audit-v0.3.md).
 
 ### Added
 - **ADR 0016** — Personal access tokens. New `pat_` primitive for non-interactive (CLI / CI / server-to-server) auth. Wire format `pat_<32hex-id>_<base64url-secret>` (Stripe-style id-then-secret); the auth middleware prefix-routes incoming bearer tokens to session / share / PAT verifiers. Argon2id storage at the cred-password parameter floor; conflated `InvalidPatTokenError` shape on missing-row vs wrong-secret to avoid a token-presence timing oracle. New `auth.kind ∈ {session, pat, share, system}` audit discriminator (additive). Closes [`spec#14`](https://github.com/flametrench/spec/issues/14).
