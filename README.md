@@ -62,7 +62,7 @@ Everything else — audit logs, notifications, file handling, billing hooks, fea
 
 ## SDK families
 
-Flametrench ships four first-party SDK families, all conforming to the same fixture corpus:
+Flametrench ships five first-party SDK families, all conforming to the same fixture corpus:
 
 | Language | Repos |
 |---|---|
@@ -70,10 +70,11 @@ Flametrench ships four first-party SDK families, all conforming to the same fixt
 | Node 20+ (TypeScript, monorepo) | [`flametrench/node`](https://github.com/flametrench/node) — `@flametrench/{ids,identity,tenancy,authz}` |
 | PHP 8.3+ | [`ids-php`](https://github.com/flametrench/ids-php), [`identity-php`](https://github.com/flametrench/identity-php), [`tenancy-php`](https://github.com/flametrench/tenancy-php), [`authz-php`](https://github.com/flametrench/authz-php) |
 | Java 17+ | [`ids-java`](https://github.com/flametrench/ids-java), [`identity-java`](https://github.com/flametrench/identity-java), [`tenancy-java`](https://github.com/flametrench/tenancy-java), [`authz-java`](https://github.com/flametrench/authz-java) |
+| Go 1.22+ (monorepo) | [`flametrench/flametrench-go`](https://github.com/flametrench/flametrench-go) — `github.com/flametrench/flametrench-go/packages/{ids,identity,tenancy,authz}` |
 
 A framework adapter for Laravel ([`flametrench/laravel`](https://github.com/flametrench/laravel)) layers on top of the PHP SDK family.
 
-A conformance test suite lives alongside the specification (27 fixture files spanning v0.1.0 and v0.2.0). SDKs claim compliance by running the fixtures against themselves; cross-language parity is enforced by the same fixtures consumed by all four families.
+A conformance test suite lives alongside the specification (29 fixture files spanning v0.1.0, v0.2.0, and v0.3.0). SDKs claim compliance by running the fixtures against themselves; cross-language parity is enforced by the same fixtures consumed by all five families.
 
 ## What this specification defines
 
@@ -94,8 +95,8 @@ What this specification does not define:
 
 - **v0.1 spec**: shipped. Adopted by sitesource/admin (the first PHP adopter); spec#5 surfaced in adoption and was patched in v0.1.x via ADR 0009.
 - **v0.2 spec**: stable, tagged `v0.2.0` (2026-04-30). Surface: rewrite rules (ADR 0007), MFA TOTP/WebAuthn/recovery (ADRs 0008 + 0010), invitation acceptance binding (ADR 0009, also in v0.1.x), org display name + slug (ADR 0011), share tokens (ADR 0012), Postgres adapter transaction nesting (ADR 0013), user display name (ADR 0014), and user enumeration (ADR 0015).
-- **v0.3 spec**: stable, tagged `v0.3.0` (2026-05-15). Surface: personal access tokens (ADR 0016) — non-interactive bearer credentials for CLI / CI / server-to-server use, with prefix-routed verification (`pat_…` / `shr_…` / session) and a new `auth.kind` audit discriminator; Postgres-backed rewrite-rule evaluation (ADR 0017) — `PostgresTupleStore.check()` accepts the same `rules` option as `InMemoryTupleStore`, retiring the v0.2 in-memory-shadow workaround. The v0.3 security audit (32 findings) is closed: 22 fixed in code, 7 spec-documented, 2 explicit v0.4 deferrals — see [`docs/security-audit-v0.3.md`](docs/security-audit-v0.3.md). Migration guidance: [`docs/migrating-to-v0.3.md`](docs/migrating-to-v0.3.md).
-- **SDKs**: Python / Node / PHP / Java span `v0.3.0` across the family (`ids`, `identity`, `tenancy`, `authz`). Packagist and npm publish the live artifacts; PyPI and Maven Central are bootstrapping (org / credential approvals pending) and will publish once unblocked. Always verify a registry directly before quoting state: `npm view @flametrench/<pkg> versions --json` (note the plural — singular `version` returns only the `latest` dist-tag). The release checklist at `docs/release-checklist.md` is the canonical pre-publish process.
+- **v0.3 spec**: stable, tagged `v0.3.0` (2026-05-15). The release **hold for the Go SDK family addition** (ADR 0018) is in effect — Go is the 5th SDK family, joining at v0.3.0 so the matrix advances in lockstep. v0.3.0 ships when Go reaches parity (~2-3 weeks post-Go-scaffold). Surface: personal access tokens (ADR 0016) — non-interactive bearer credentials for CLI / CI / server-to-server use, with prefix-routed verification (`pat_…` / `shr_…` / session) and a new `auth.kind` audit discriminator; Postgres-backed rewrite-rule evaluation (ADR 0017) — `PostgresTupleStore.check()` accepts the same `rules` option as `InMemoryTupleStore`, retiring the v0.2 in-memory-shadow workaround. The v0.3 security audit (32 findings) is closed: 22 fixed in code, 7 spec-documented, 2 explicit v0.4 deferrals — see [`docs/security-audit-v0.3.md`](docs/security-audit-v0.3.md). Migration guidance: [`docs/migrating-to-v0.3.md`](docs/migrating-to-v0.3.md).
+- **SDKs**: Python / Node / PHP / Java / Go span `v0.3.0` across the family (`ids`, `identity`, `tenancy`, `authz`). Packagist + npm have v0.2.x stable today; v0.3.0 is queued and waiting on the Go family. PyPI and Maven Central are also bootstrapping (org / credential approvals pending) and will publish v0.3.0 once unblocked. Go publishes via `go get` directly from the GitHub tag (no central registry). Always verify a registry directly before quoting state: `npm view @flametrench/<pkg> versions --json` (note the plural — singular `version` returns only the `latest` dist-tag). The release checklist at `docs/release-checklist.md` is the canonical pre-publish process.
 - **Postgres reference**: `postgres.sql` covers the full v0.1 + v0.2 + v0.3 data model (including the `mfa`, `usr_mfa_policy`, and `shr` tables added in v0.2, the `pat` table added in v0.3, and the `usr.display_name` column added in v0.2). `postgres-rls.sql` is an optional RLS companion. v0.3 also relaxes the `tup.subject_type` check constraint from a hard enum to `^[a-z]{2,6}$` to support `pat` and adopter-defined subject types in rewrite rules — see `migrating-to-v0.3.md` for the migration SQL.
 - **Conformance suite**: 29 fixture files (27 v0.1/v0.2 + 2 v0.3 PAT fixtures), executed by all four SDK families.
 
@@ -118,7 +119,7 @@ flametrench/spec/
 │   ├── external-idps.md         coexistence with Auth0 / Clerk / Cognito / etc. (non-normative)
 │   ├── migrating-to-v0.2.md     upgrade guide for v0.1 adopters
 │   └── migrating-to-v0.3.md     upgrade guide for v0.2 adopters
-├── decisions/                   Architecture Decision Records (17 ADRs)
+├── decisions/                   Architecture Decision Records (18 ADRs)
 │   ├── README.md                index + ADR writing guide
 │   ├── 0001 — authorization model
 │   ├── 0002 — tenancy model
@@ -136,7 +137,8 @@ flametrench/spec/
 │   ├── 0014 — user display name                             (v0.2)
 │   ├── 0015 — IdentityStore.listUsers                       (v0.2)
 │   ├── 0016 — personal access tokens                         (v0.3)
-│   └── 0017 — Postgres rewrite-rule evaluation               (v0.3)
+│   ├── 0017 — Postgres rewrite-rule evaluation               (v0.3)
+│   └── 0018 — Go SDK family addition                         (v0.3)
 ├── reference/                   non-normative implementation artifacts
 │   ├── README.md                conventions; what's normative vs reference
 │   ├── postgres.sql             reference Postgres DDL (v0.1 + v0.2 + v0.3 additive)

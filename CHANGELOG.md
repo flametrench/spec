@@ -2,9 +2,9 @@
 
 All notable spec changes are recorded here. Adopter-facing migration guidance lives in [`docs/migrating-to-v0.3.md`](docs/migrating-to-v0.3.md) (and [`docs/migrating-to-v0.2.md`](docs/migrating-to-v0.2.md) for v0.1 → v0.2). Per-SDK changelogs live in their respective repos; this file tracks the spec contract only.
 
-## [v0.3.0] — 2026-05-15
+## [v0.3.0] — 2026-05-15 (release hold for Go SDK addition; ADR 0018)
 
-v0.3.0 stable cutoff. Flips ADRs 0016 (personal access tokens) and 0017 (Postgres rewrite-rule evaluation) from Proposed to Accepted. SDK families snap to v0.3.0 across PHP / Node / Python / Java for `ids` / `identity` / `authz`; `tenancy` bumps from 0.2.1 to 0.3.0 (Node) for SDK matrix uniformity — no surface changes in tenancy. The full v0.3 security audit (32 findings) is closed: 22 fixed in code, 7 spec-documented, 2 explicit v0.4 deferrals (L4, F2). Canonical remediation table at [`docs/security-audit-v0.3.md`](docs/security-audit-v0.3.md).
+v0.3.0 stable cutoff. Flips ADRs 0016 (personal access tokens), 0017 (Postgres rewrite-rule evaluation), **and 0018 (Go SDK family addition)** from Proposed to Accepted. SDK families snap to v0.3.0 across PHP / Node / Python / Java for `ids` / `identity` / `authz`; `tenancy` bumps from 0.2.1 to 0.3.0 (Node) for SDK matrix uniformity — no surface changes in tenancy. **Go joins as the 5th SDK family** at v0.3.0 — `github.com/flametrench/flametrench-go` (monorepo with one `go.mod` per package). The v0.3.0 cut is held ~2-3 weeks so all 5 families ship in lockstep — see ADR 0018 for the rationale. The full v0.3 security audit (32 findings) is closed: 22 fixed in code, 7 spec-documented, 2 explicit v0.4 deferrals (L4, F2). Canonical remediation table at [`docs/security-audit-v0.3.md`](docs/security-audit-v0.3.md).
 
 ### Added
 - **ADR 0016** — Personal access tokens. New `pat_` primitive for non-interactive (CLI / CI / server-to-server) auth. Wire format `pat_<32hex-id>_<base64url-secret>` (Stripe-style id-then-secret); the auth middleware prefix-routes incoming bearer tokens to session / share / PAT verifiers. Argon2id storage at the cred-password parameter floor; conflated `InvalidPatTokenError` shape on missing-row vs wrong-secret to avoid a token-presence timing oracle. New `auth.kind ∈ {session, pat, share, system}` audit discriminator (additive). Closes [`spec#14`](https://github.com/flametrench/spec/issues/14).
@@ -16,8 +16,10 @@ v0.3.0 stable cutoff. Flips ADRs 0016 (personal access tokens) and 0017 (Postgre
 - **Conformance fixtures** — two new PAT fixtures: `identity/pat/token-format.json` (11 tests pinning the `pat_<32hex>_<base64url>` wire-format structural validation) and `identity/pat/bearer-prefix-routing.json` (6 tests pinning the `auth.kind ∈ {pat, share, session}` classifier and the no-cross-routing invariant). The `index.json` manifest also picks up two existing v0.2 fixtures (`identity/list-users.json`, `identity/user-display-name.json`) that were on disk but never declared.
 
 ### SDK matrix
-- v0.3.0 SDK ports begin with PHP and Node (the unblocked registries). Python and Java implementations land code-ready and tagged but unpublished, pending the same registry blockers that held v0.2.0 (PyPI org approval, Maven Central credential regen).
-- Both v0.3 features (PATs + Postgres rewrite-rules) ship together in each SDK release.
+- v0.3.0 ships with **5 SDK families** in lockstep: PHP, Node, Python, Java, Go. ADR 0018 documents the Go addition and the rationale for holding v0.3.0 until the Go family reaches parity.
+- PHP and Node publish to Packagist + npm at cut; Python and Java land code-ready and tagged but unpublished, pending the same registry blockers that held v0.2.0 (PyPI org approval, Maven Central credential regen). Go publishes via `go get` from the GitHub tag — no central registry required.
+- All three v0.3 features (PATs, Postgres rewrite-rules, Go family) ship together at the v0.3.0 tag.
+- **Added: ADR 0018** — Go SDK family addition. Monorepo at `github.com/flametrench/flametrench-go` with `packages/{ids,identity,tenancy,authz}` as four Go modules. Adopters: `go get github.com/flametrench/flametrench-go/packages/identity@v0.3.0`. Conformance fixture corpus consumed unchanged; Go SDK runs against the same JSON fixtures as the other four families.
 
 ## [v0.2.0] — 2026-04-30
 

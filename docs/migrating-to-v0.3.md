@@ -189,9 +189,15 @@ pip install 'flametrench-ids>=0.3.0' \
 #   <artifactId>{ids,identity,tenancy,authz}</artifactId>
 #   <version>0.3.0</version>
 # </dependency>
+
+# Go (5th SDK family — added v0.3 per ADR 0018; no central registry, publishes via GitHub tag)
+go get github.com/flametrench/flametrench-go/packages/ids@v0.3.0
+go get github.com/flametrench/flametrench-go/packages/identity@v0.3.0
+go get github.com/flametrench/flametrench-go/packages/tenancy@v0.3.0
+go get github.com/flametrench/flametrench-go/packages/authz@v0.3.0
 ```
 
-`tenancy` bumps to 0.3.0 across all families with no surface changes — the version is moving in lockstep with the SDK matrix.
+`tenancy` bumps to 0.3.0 across all families with no surface changes — the version is moving in lockstep with the SDK matrix. Go is new in v0.3 (ADR 0018); adopters who want to consume Flametrench from Go services should start here. The Go SDK conforms to the same fixture corpus as Python / Node / PHP / Java, so wire-format and Argon2id PHC interop is mechanical.
 
 ## 7. Security audit changes you inherit
 
