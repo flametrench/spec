@@ -13,7 +13,7 @@ Applications need to tell users about things: a mention, an invitation, an appro
 
 Flametrench owns the small, universal part and **deliberately not** the large variable part. This is the notify analog of "file-metadata is not a blob store": **notify is a record/event primitive, not a delivery engine.** This boundary is an operator-authoritative spec line, not an appetite preference.
 
-This is one of four v0.4 primitives; this ADR is **notifications only**. It depends on the audit primitive (`aud`) for emission and respects `tenancy` (ADR 0002) boundaries.
+This is one of four v0.4 primitives; this ADR is **notifications only**. It depends on [ADR 0019](./0019-audit-primitive.md) (the `aud` audit primitive) for emission and respects `tenancy` (ADR 0002) boundaries.
 
 ## Decision
 
@@ -83,15 +83,17 @@ Creating a notification **is** the event adopters react to. The primitive guaran
 | `markRead` / `markUnread` | Toggle read state. |
 | `dismiss` | Terminal-dismiss a notification. |
 
-A recipient may only read and transition **their own** notifications; cross-recipient access requires the appropriate authz and is otherwise denied.
+### Access — strictly recipient-scoped (normative)
+
+A notification is **not** a general authz object. Access is **strictly bound to the recipient**, like a `ses_` is bound to its user: `get`, `listNotifications`, `countUnread`, `markRead`, `markUnread`, and `dismiss` operate **only** on notifications whose `recipient_usr_id` is the authenticated caller. An operation targeting another user's notification is denied as if it did not exist (per the tenancy-non-inference rule below) — there is no cross-recipient read path in the primitive. Administrative or "see all notifications in an org" views are an **adopter concern** layered outside this primitive (e.g. the adopter queries its own store, or models an admin capability via `authz` on a different object); the `not` primitive itself exposes only the recipient's own inbox.
 
 ### Audit emission
 
-`createNotification` and `dismiss` MUST emit an `aud` event (`action ∈ {"notify.create","notify.dismiss"}`, `target = { kind: "not", id: not_<id> }`, scope, outcome). High-frequency routine transitions (`markRead`/`markUnread`) need not each emit an event (adopters MAY enable it). A denied access follows the audit primitive's cross-scope non-disclosure rule.
+`createNotification` and `dismiss` MUST emit an `aud` event (`action ∈ {"notify.create","notify.dismiss"}`, `target = { kind: "not", id: not_<id> }`, scope, outcome). High-frequency routine transitions (`markRead`/`markUnread`) need not each emit an event (adopters MAY enable it). A denied access follows ADR 0019's cross-scope non-disclosure rule.
 
 ### Tenancy non-inference (normative)
 
-A notification is scoped to one `org` and addressed to one recipient. The `listNotifications`/`countUnread`/`get` surface MUST NOT let a caller observe notifications outside their own recipient scope, and a cross-scope or cross-recipient probe MUST NOT disclose the existence of a foreign notification (presence, count, or error-code differential) — the same existence-oracle discipline the audit primitive applies to denied operations.
+A notification is scoped to one `org` and addressed to one recipient. The `listNotifications`/`countUnread`/`get` surface MUST NOT let a caller observe notifications outside their own recipient scope, and a cross-scope or cross-recipient probe MUST NOT disclose the existence of a foreign notification (presence, count, or error-code differential) — the same existence-oracle discipline ADR 0019 applies to denied operations.
 
 ### Constraints (normative)
 
@@ -126,7 +128,7 @@ A notification is scoped to one `org` and addressed to one recipient. The `listN
 
 ## References
 
-- Audit primitive (`aud`, v0.4): `notify.*` lifecycle emits `aud` events; the cross-scope non-disclosure rule applies.
+- [ADR 0019 — Audit primitive (`aud`)](./0019-audit-primitive.md): `notify.*` lifecycle emits `aud` events; the cross-scope non-disclosure rule applies.
 - [ADR 0002 — Tenancy model](./0002-tenancy-model.md): the org-scope and recipient boundaries this primitive respects.
 - [`docs/ids.md`](../docs/ids.md): `not` promoted Reserved → active (v0.4; this ADR amends it).
 - Project README: Flametrench does not own provider/delivery infrastructure — the principle behind the notify boundary.
