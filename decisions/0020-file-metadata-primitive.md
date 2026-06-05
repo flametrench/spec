@@ -1,11 +1,9 @@
-# File-metadata primitive (`file`)
+# 0020 — File-metadata primitive (`file`)
 
 **Status:** Proposed (v0.4)
 **Date:** 2026-06-05
 **Deciders:** Flametrench stewards
 **Filed by:** SiteSource (primary consumer)
-
-> Number-less draft: the ADR number is assigned at PR-open / acceptance per the `decisions/README.md` numbering rule. Referenced by name until then.
 
 ## Context
 
@@ -13,7 +11,7 @@ Nearly every application stores files: avatars, attachments, document uploads, e
 
 Flametrench already provides the load-bearing pieces this needs: `identity` (owners), `tenancy` (scope), and `authz` (ADR 0001 relational tuples + `check()`). A file-metadata primitive is the natural completion — it does **not** require Flametrench to become a blob store.
 
-This is one of four v0.4 primitives (audit, notifications, feature flags, file-metadata); this ADR is **file-metadata only**. It depends on the audit primitive (`aud`) for its audit emission and on the authorization primitive (ADR 0001) for access.
+This is one of four v0.4 primitives (audit, notifications, feature flags, file-metadata); this ADR is **file-metadata only**. It depends on [ADR 0019](./0019-audit-primitive.md) (the `aud` audit primitive) for its audit emission and on the authorization primitive (ADR 0001) for access.
 
 ## Decision
 
@@ -93,7 +91,7 @@ Access decisions reuse `authz.check()` (ADR 0001) on the file as object:
 
 ### Audit emission
 
-Every mutating operation MUST emit an `aud` event (per the audit primitive) with `action ∈ {"file.create","file.update","file.delete"}`, `target = { kind: "file", id: file_<id> }`, the acting `scope`, and the `outcome`. A denied access follows the audit primitive's denied-op / cross-scope non-disclosure rule.
+Every mutating operation MUST emit an `aud` event (per [ADR 0019](./0019-audit-primitive.md)) with `action ∈ {"file.create","file.update","file.delete"}`, `target = { kind: "file", id: file_<id> }`, the acting `scope` (present — `file_`s are org-scoped), and the `outcome`. A denied access follows ADR 0019's denied-op / cross-scope non-disclosure rule.
 
 ### Tenancy
 
@@ -135,6 +133,6 @@ A `file_` is scoped to one `org`. Cross-scope access is impossible through the p
 ## References
 
 - [ADR 0001 — Authorization model](./0001-authorization-model.md): `check(subject, relation, object)` and the built-in relations this primitive reuses; a `file_` is an `object_type: "file"` authz object.
-- Audit primitive (`aud`, v0.4): `file.*` operations emit `aud` events on its event schema; the denied-op / cross-scope non-disclosure rule applies.
+- [ADR 0019 — Audit primitive (`aud`)](./0019-audit-primitive.md): `file.*` operations emit `aud` events on its event schema; the denied-op / cross-scope non-disclosure rule applies.
 - [`docs/ids.md`](../docs/ids.md): `file` promoted Reserved → active (v0.4; this ADR amends it); `file_<32hex>` wire format.
 - Project README: the storage-agnostic principle (Flametrench does not define backend storage).
