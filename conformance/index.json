@@ -176,6 +176,13 @@
       "capability": "identity",
       "operation": "resolve_bearer",
       "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/flags/assign-bucket.json",
+      "capability": "flags",
+      "operation": "assign_bucket",
+      "conformance_level": "MUST",
+      "runnable_today": false
     }
   ]
 }
