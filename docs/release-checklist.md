@@ -25,6 +25,8 @@ release is correct:
 | flametrench/node top-level README staleness | Each SDK was listed at its RC version (`v0.2.0-rc.{2,5,6,7}`) — never updated for the v0.2.0 stable cut, then immediately stale again after 0.2.1. Caught in the same audit. |
 | Spec README "SDK families ship at v0.2.0" wording | Conflated "spec version" (v0.2.0 — correct) with "package version" (Node SDKs at 0.2.1). Technically inaccurate after the patch. |
 | node-repo CI red on main for 5+ commits | `pnpm/action-setup@v4` started rejecting dual-spec configs (`with: version` + `packageManager:`) in a recent release; CI silently failed every push for weeks. Pre-existing schema-drift fail compounded the noise. Discovered only when the next PR landed. |
+| Go per-module tag gap — v0.3.0 + v0.3.0-rc.1 uninstallable | Go multi-module repos require per-module tags (`packages/<module>/vX.Y.Z`), not root tags. `v0.3.0` and `v0.3.0-rc.1` were tagged at the root, so `go get github.com/flametrench/flametrench-go/packages/identity@v0.3.0` returned "unknown revision." Release checklist had no Go section and missed the requirement entirely. Adopters saw 404 on install. Fixed by tagging per-module; Go proxy verification gate added to checklist. |
+| flametrench.dev spec-vs-SDK version conflation | v0.3.0 release header in spec README stated "v0.3.0 stable" over a matrix where only spec and Go were at v0.3, while PHP/Node/Python/Java remained at v0.2.x. Readers conflated "spec is v0.3" with "all SDKs are v0.3." Clarified via accurate parity wording once all families reached v0.3. |
 
 The pattern across these is the same: **"it works on my machine" or "the
 source is correct" was treated as a release proof.** Proof must be
@@ -287,6 +289,24 @@ treated as advisory. It must be a hard gate.
 - **Process:** `twine upload`, in dependency order: `ids` first (others depend on it), then identity / tenancy / authz in any order. Use GitHub Actions Trusted Publisher credentials (no long-lived API token).
 - Wheel content vs source: wheels include the full src tree (no separate `dist/` build). Stale-build risk lower than Node.
 - **PyPI Org note:** A PyPI Organization is purely a management/namespace layer, not a prerequisite for publishing. The four package names (`flametrench-ids`, `flametrench-identity`, `flametrench-tenancy`, `flametrench-authz`) can migrate to an org later via PyPI's project-move feature with zero disruption to consumers.
+
+### Go (multi-module packages)
+
+- **Per-module tags (mandatory):** Go multi-module repos require per-module tags, not root tags. Every module under `packages/{ids,identity,tenancy,authz}` must have its own tag `packages/<module>/vX.Y.Z` at the release commit. Root `vX.Y.Z` tags do NOT version submodules and will cause `go get` to fail with "unknown revision."
+- **Proxy verification (mandatory):** After tagging, verify each module is reachable via the Go module proxy before declaring "released." For each module:
+  ```bash
+  curl https://proxy.golang.org/github.com/flametrench/flametrench-go/packages/<module>/@v/<ver>.info
+  ```
+  Must return a valid JSON response with the module name and version (not 404 or timeout). Proxy indexing is automatic but can lag 5–30 seconds; retry if needed.
+- **Install smoke:** In a clean temp module, test each package:
+  ```bash
+  go get github.com/flametrench/flametrench-go/packages/ids@<ver>
+  go get github.com/flametrench/flametrench-go/packages/identity@<ver>
+  # etc for tenancy, authz
+  # Then a trivial build: go build ./main.go
+  ```
+  Must succeed with no "unknown revision" errors.
+- **Doc/surface sync:** Update flametrench.dev Go status-matrix cells and the README's Go installation snippet to the new version.
 
 ### Maven Central (Java packages)
 
