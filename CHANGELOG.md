@@ -19,7 +19,7 @@ v0.3.0 stable cutoff. Flips ADRs 0016 (personal access tokens), 0017 (Postgres r
 - v0.3.0 ships with **5 SDK families** in lockstep: PHP, Node, Python, Java, Go. ADR 0018 documents the Go addition and the rationale for holding v0.3.0 until the Go family reaches parity.
 - PHP and Node publish to Packagist + npm at cut; Python and Java land code-ready and tagged but unpublished, pending the same registry blockers that held v0.2.0 (PyPI org approval, Maven Central credential regen). Go publishes via `go get` from the GitHub tag — no central registry required.
 - All three v0.3 features (PATs, Postgres rewrite-rules, Go family) ship together at the v0.3.0 tag.
-- **Added: ADR 0018** — Go SDK family addition. Monorepo at `github.com/flametrench/flametrench-go` with `packages/{ids,identity,tenancy,authz}` as four Go modules. Adopters: `go get github.com/flametrench/flametrench-go/packages/identity@v0.3.0`. Conformance fixture corpus consumed unchanged; Go SDK runs against the same JSON fixtures as the other four families.
+- **Added: ADR 0018** — Go SDK family addition. Monorepo at `github.com/flametrench/flametrench-go` with `packages/{ids,identity,tenancy,authz}` as four Go modules. Adopters: `go get github.com/flametrench/flametrench-go/packages/identity@v0.3.0`. Go SDK is designed to conform to the fixture corpus; conformance verification in progress (rc.1 available).
 
 ## [v0.2.0] — 2026-04-30
 
