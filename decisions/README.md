@@ -39,6 +39,7 @@ ADRs are numbered sequentially from 0001 in the order accepted. Numbers never ch
 | [0016](./0016-personal-access-tokens.md) | Personal access tokens (v0.3 — Proposed) | New `pat` primitive for non-interactive (CLI / CI / server-to-server) auth; id-then-secret wire format with prefix-routed bearer dispatch; Argon2id storage; `auth.kind` audit discriminator; closes spec#14 |
 | [0017](./0017-postgres-rewrite-rule-evaluation.md) | Postgres rewrite-rule evaluation (v0.3 — Proposed) | `PostgresTupleStore` gains rule-aware `check()` via iterative async expansion (not SQL push-down); Node `evaluate()` becomes async-capable; retires the v0.2 deferral in `docs/authorization.md` |
 | [0018](./0018-go-sdk-family-addition.md) | Add Go to the first-party SDK family matrix (v0.3 — Accepted) | Reverses the locked-at-four SDK policy on concrete adopter demand; adds Go as the 5th family as a `flametrench-go` monorepo (one `go.mod` per package); holds v0.3.0 for 5-family lockstep |
+| [0019](./0019-audit-primitive.md) | Audit primitive (`aud`) (v0.4 — Proposed) | Append-only action log; fulfills ADR 0016's forward reference for the `aud` primitive, event schema, and `auth.kind = system`; `on_behalf` for delegated non-human actors (orthogonal to `auth.kind`); denied-op cross-scope non-disclosure; promotes `aud` in `docs/ids.md`. Filed by SiteSource |
 
 ## Writing a new ADR
 

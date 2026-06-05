@@ -70,6 +70,7 @@ The following type prefixes are registered by the current specification:
 | `tup`  | Authorization tuple     | Authorization                            |
 | `shr`  | Share token             | Authorization (v0.2; ADR 0012)           |
 | `pat`  | Personal access token   | Identity (v0.3; ADR 0016)                |
+| `aud`  | Audit event             | Audit (v0.4; ADR 0019)                   |
 
 The `pat` bearer token uses a two-part `pat_<32hex-id>_<secret>` wire format (id-then-secret, split on the second underscore — the base64url secret MAY itself contain `_`/`-`); see [ADR 0016](../decisions/0016-personal-access-tokens.md) for the normative format and verification rules. The `pat_<32hex>` row identifier follows the standard `{type}_{hex}` encoding above.
 
@@ -79,7 +80,6 @@ Reserved prefixes for future capabilities (not usable in v0.2 implementations):
 
 | Prefix  | Planned resource        | Capability      | Status        |
 | ------- | ----------------------- | --------------- | ------------- |
-| `aud`   | Audit event             | Audit           | Reserved      |
 | `not`   | Notification            | Notifications   | Reserved      |
 | `file`  | File                    | Files           | Reserved      |
 | `flag`  | Feature flag            | Feature flags   | Reserved      |
@@ -185,4 +185,5 @@ And MUST reject the following inputs as invalid:
 
 ## Change history
 
+- **v0.4 (proposed, 2026)** — Promoted `aud` from Reserved to the active type-prefix registry (Audit; ADR 0019).
 - **v0.1 (draft, 2026)** — Initial specification. Registered prefixes for identity, tenancy, authorization. Reserved prefixes for future capabilities. Decoding rule 5 clarified to require version nibble in `[1-8]`, explicitly rejecting Nil and Max UUIDs.
