@@ -34,12 +34,10 @@ FileMetadata = {
   owner_usr_id:  usr_<32hex>           // the user who registered the file
   name:          string                // display filename, 1–255 Unicode code units
   content_type:  string                // IANA media type, e.g. "image/png"
-  size_bytes:    integer               // non-negative; adopter-asserted
-  checksum: {
-    algo:        "sha-256"             // pinned; the only v0.4 algorithm
-    value:       string                // 64 lowercase hex chars
-  }
-  storage_ref:   string                // OPAQUE adopter pointer; primitive never interprets it
+  size_bytes:    integer | null        // non-negative; adopter-asserted; null only while status = "pending"
+  checksum:      Checksum | null        // null only while status = "pending"
+  // Checksum = { algo: "sha-256" /* pinned; only v0.4 algo */, value: string /* 64 lowercase hex */ }
+  storage_ref:   string | null         // OPAQUE adopter pointer; null only while status = "pending"
   status:        "pending"|"active"|"deleted"   // lifecycle, below
   created_at:    timestamptz
   updated_at:    timestamptz
@@ -66,9 +64,11 @@ FileMetadata = {
 
 ### Lifecycle (`status`)
 
-- **`pending`** — metadata registered, the adopter has not yet confirmed the bytes are durably stored (e.g. a pre-signed-upload handshake is in flight).
-- **`active`** — the file is usable.
+- **`pending`** — metadata registered, the adopter has not yet confirmed the bytes are durably stored (e.g. a pre-signed-upload handshake is in flight). `size_bytes`, `checksum`, and `storage_ref` **MAY be null** in this state — they are typically unknown until the upload completes.
+- **`active`** — the file is usable. On the `pending → active` transition, `size_bytes`, `checksum`, and `storage_ref` **MUST be set** (non-null), and they become **immutable** thereafter. A file registered directly as `active` (no upload handshake) MUST supply all three at create.
 - **`deleted`** — soft-deleted; the record is retained (for audit reconstruction and reference integrity) but the file is treated as gone. Hard deletion / storage reclamation is the adopter's responsibility against `storage_ref`.
+
+There is no transition back to `pending`. The only transitions are `pending → active`, `pending → deleted`, and `active → deleted`.
 
 ### Access (normative)
 
@@ -77,6 +77,7 @@ Access decisions reuse `authz.check()` (ADR 0001) on the file as object:
 - **Read** metadata / resolve `storage_ref`: `check(usr, ["viewer","editor","owner"], ("file", file_id))`.
 - **Mutate** metadata (`name`, `status`) or **delete**: `check(usr, ["editor","owner"], ("file", file_id))`.
 - At `createFileMetadata`, the implementation MUST write an ownership tuple `(usr_owner, "owner", "file", file_id)` so the registrant can subsequently access it. Sharing a file = writing a `viewer`/`editor` tuple on it via the normal `authz` surface; revocation = deleting that tuple. No `file`-specific sharing API.
+- **`listFileMetadata` is not a `check()` bypass.** Listing is gated like `IdentityStore.listUsers` (ADR 0015): the caller MUST hold an adopter-defined org-scoped read relation on the `scope` (e.g. `check(usr, [<org-read relation>], ("org", scope))`), **and** the implementation MUST return only files the caller is authorized to read — equivalently, the result set is filtered to `file_`s for which the per-file read `check()` above would pass. A caller MUST NOT learn of files they could not `getFileMetadata`. The org-scoped gate is the coarse filter; the per-file `check()` is the fine one.
 
 ### Operations
 
@@ -88,7 +89,7 @@ Access decisions reuse `authz.check()` (ADR 0001) on the file as object:
 | `updateFileMetadata` | Mutate the mutable subset (`name`, `status`); emits `aud`. |
 | `deleteFileMetadata` | Transition to `status: "deleted"` (soft); emits `aud`. |
 
-`size_bytes`, `checksum`, `content_type`, `owner_usr_id`, and `scope` are immutable after create (a changed file is a new `file_`).
+`content_type`, `owner_usr_id`, and `scope` are immutable after create. `size_bytes`, `checksum`, and `storage_ref` are immutable **once set** (at create for a directly-`active` file, or at the `pending → active` transition). A changed file's bytes are a new `file_`.
 
 ### Audit emission
 
