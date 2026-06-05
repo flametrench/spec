@@ -326,6 +326,8 @@ These are areas the audit specifically looked at and found correct. They form th
 
 Status updates land here as PRs merge. Format: `<finding-id> · <PR-link> · <date> · <status-symbol>`.
 
+**Important:** The fixes listed below cite commits on v0.3 integration branches (e.g. `authz-php/v03-postgres-rewrite-rule-eval`, `hearth/v03-security-audit-c2-c3-hearth`, `identity-{php,node,python,java}/v0.3.x`) that are not yet merged to each repo's `main`. The 🟩 "Fixed" status indicates the fix is verified-present on the integration branch and will land at the v0.3.0 tag; it does not indicate the fix is merged to `main` as of this audit date.
+
 | Finding | PR | Date | Status |
 |---|---|---|---|
 | C1 | authz-php@2a25e30 | 2026-04-30 | 🟩 |
@@ -366,7 +368,7 @@ Status updates land here as PRs merge. Format: `<finding-id> · <PR-link> · <da
 
 The focused 2nd-pass review of the patched surface ran 2026-05-01. Findings:
 
-- **C1 ✅** — patched `checkAny` validates every element of the relations array against `Patterns::RELATION_NAME` before binding; no SQL string concatenation remains in the file.
+- **C1 ✅** — patched `checkAny` validates every element of the relations array against `Patterns::RELATION_NAME` before binding; the string concatenation at `PostgresTupleStore.php:372` persists, but input validation prevents injection.
 - **C2 ✅** — both Hearth backends enforce `verified.relation === 'commenter'` on write paths; agent-side self-share mints `commenter` not `viewer`. The fix also tightens the read path to require `commenter` (Hearth never mints viewer shares); adopters who later add viewer-only shares will need to update both branches together — documented inline.
 - **C3 ❌→🟩** — re-audit caught a constant typo: PHP `InstallController.php`'s advisory-lock literal was `7521751562894049651`, NOT the canonical `0x6865617274686e73 = 7522525896799448691` that Node uses. The two backends were serializing against DIFFERENT lock keys. Fixed in `hearth@99973eb` (corrects the literal AND fixes the misleading "heartheng" comment in both backends — the correct ASCII unpacking is "hearthns").
 - **H2 ✅** — verified across all 4 SDKs that BOTH the missing-row branch AND the structurally-valid-but-not-UUIDv7 (`wireToUuid` failure) branch perform `verifyPasswordHash(DUMMY_PHC_HASH, secret)` before raising. The second branch is easy to miss; all 4 SDKs got it right.
