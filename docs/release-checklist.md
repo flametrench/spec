@@ -59,6 +59,7 @@ live surfaces.
    the published state, (c) at least one adopter has run the published
    artifact in a non-trivial flow, (d) CI is green and exercises the
    built artifact, not just source.
+7. **CI and conformance must never depend on unpublished registries.** Build and test from source or sibling checkouts — never assume a package is live on PyPI, Maven, npm, or Go proxy during development. Publish workflows must be guarded (manual trigger or gated job) until their registry publisher/credentials are live, to prevent CI floods from auto-firing against non-existent infrastructure. This prevents the class of failures where a tag triggers publish CI that fails before the registry gate exists.
 
 ---
 
