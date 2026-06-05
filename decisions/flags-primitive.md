@@ -13,7 +13,7 @@ Every application past its first month wants feature flags: gradual rollouts, ki
 
 Flametrench already has that model: relational tuples and `check()` (ADR 0001). The single most important decision for this primitive is therefore a reconciliation, not an invention — **flag targeting reuses `authz`, it does not introduce a parallel targeting language.** This is the `flags ↔ authz` analog of `audit ↔ 0016`, so it leads.
 
-This is one of four v0.4 primitives; this ADR is **flags only**. It depends on `authz` (ADR 0001) for targeting and on the audit primitive (`aud`) for config-change emission.
+This is one of four v0.4 primitives; this ADR is **flags only**. It depends on `authz` (ADR 0001) for targeting and on [ADR 0019](./0019-audit-primitive.md) (the `aud` audit primitive) for config-change emission.
 
 ## Decision
 
@@ -89,7 +89,12 @@ bucket(key, subject_id):
   return n mod 10000                                       // basis points, 0–9999
 ```
 
-A `percentage` rule with `basis_points = B` matches iff `bucket(key, subject_id) < B`. Properties this guarantees: a given `(key, subject)` always lands in the same bucket (sticky — no flicker on re-evaluation); raising `B` only ever **adds** subjects to the rollout (monotonic); and every SDK computes byte-identical buckets. SHA-256 is the only v0.4 hash; conformance fixtures pin known `(key, subject_id) → bucket` vectors.
+**Exact byte inputs (normative — this is what decides cross-SDK identity):**
+- `key` is the flag's `key` string, UTF-8 encoded with no normalization.
+- `subject_id` is the subject's **full wire-format id string** — the `{type}_{32hex}` form, e.g. the literal bytes of `usr_0190f2a81b3c7abc8123000000000002` — UTF-8 encoded. **Not** the bare 32-hex payload, **not** the hyphenated UUID, **not** the decoded bytes. SDKs hash the wire string exactly as it appears on the wire.
+- `||` is byte concatenation; `0x00` is a single NUL byte separating the two UTF-8 strings.
+
+A `percentage` rule with `basis_points = B` matches iff `bucket(key, subject_id) < B`. Properties this guarantees: a given `(key, subject)` always lands in the same bucket (sticky — no flicker on re-evaluation); raising `B` only ever **adds** subjects to the rollout (monotonic); and every SDK computes byte-identical buckets. SHA-256 is the only v0.4 hash; the conformance corpus pins `(key, subject_id) → bucket` vectors that carry the **exact input string** (e.g. `key="new-checkout"`, `subject_id="usr_0190f2a81b3c7abc8123000000000002"` → a fixed bucket), so any SDK feeding the wrong byte representation fails the fixture immediately.
 
 ### Operations
 
@@ -102,13 +107,20 @@ A `percentage` rule with `basis_points = B` matches iff `bucket(key, subject_id)
 | `deleteFlag` | Remove a flag; emits `aud`. |
 | `evaluate` | Resolve a flag for a subject → boolean. Hot path; **not** audited. |
 
+### Authorization
+
+Flag **configuration** operations are gated by `authz`. Reading/managing flags is a scope-level concern (flags are not per-flag authz objects the way files are):
+
+- `createFlag`/`updateFlag`/`deleteFlag`/`getFlag`/`listFlags` require the caller to hold an adopter-defined scope-level relation on the `scope` — e.g. `check(usr, [<flag-read relation>], ("org", scope))` for reads and a write relation for mutations. `listFlags` is gated exactly like `IdentityStore.listUsers` (ADR 0015): an authorized, org-scoped enumeration — never an unauthenticated catalog of a foreign org's flags.
+- `evaluate` is the exception: it is called on behalf of a subject in the request path and does **not** require the caller to be a flag-admin; it answers "is this flag on for this subject" and is governed by the request's own authentication, not a flag-management grant.
+
 ### Audit emission
 
 Flag **configuration** changes (`createFlag`/`updateFlag`/`deleteFlag`) MUST emit an `aud` event (`action ∈ {"flag.create","flag.update","flag.delete"}`, `target = { kind: "flag", id: flag_<id> }`, scope, outcome). **`evaluate` MUST NOT emit an audit event** — it runs per-request at scale and per-evaluation audit would be prohibitive. (Adopters that need evaluation telemetry use metrics, not the audit log.)
 
 ### Tenancy
 
-A `flag` is scoped to one `org`. Cross-scope access is impossible through the primitive, and a cross-scope probe MUST NOT disclose a foreign flag's existence (the existence-non-disclosure discipline the audit primitive applies to denied operations).
+A `flag` is scoped to one `org`. Cross-scope access is impossible through the primitive, and a cross-scope probe MUST NOT disclose a foreign flag's existence (the existence-non-disclosure discipline ADR 0019 applies to denied operations).
 
 ### Constraints (normative)
 
@@ -145,6 +157,6 @@ A `flag` is scoped to one `org`. Cross-scope access is impossible through the pr
 ## References
 
 - [ADR 0001 — Authorization model](./0001-authorization-model.md) and `docs/authorization.md` (Patterns A/B): the `check()` + relation model that targeting reuses.
-- Audit primitive (`aud`, v0.4): `flag.*` config changes emit `aud` events; the cross-scope non-disclosure rule applies.
+- [ADR 0019 — Audit primitive (`aud`)](./0019-audit-primitive.md): `flag.*` config changes emit `aud` events; the cross-scope non-disclosure rule applies.
 - [ADR 0007 — Authorization rewrite rules](./0007-authorization-rewrite-rules.md): future rewrite rules compose into flag targeting for free, since targeting is `check()`.
 - [`docs/ids.md`](../docs/ids.md): `flag` promoted Reserved → active (v0.4; this ADR amends it).
