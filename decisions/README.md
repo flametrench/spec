@@ -42,6 +42,7 @@ ADRs are numbered sequentially from 0001 in the order accepted. Numbers never ch
 | [0019](./0019-audit-primitive.md) | Audit primitive (`aud`) (v0.4 — Proposed) | Append-only action log; fulfills ADR 0016's forward reference for the `aud` primitive, event schema, and `auth.kind = system`; `on_behalf` for delegated non-human actors (orthogonal to `auth.kind`); denied-op cross-scope non-disclosure; promotes `aud` in `docs/ids.md`. Filed by SiteSource |
 | [0020](./0020-file-metadata-primitive.md) | File-metadata primitive (`file`) (v0.4 — Proposed) | `file_` metadata + lifecycle, storage-agnostic (opaque `storage_ref`, no blob bytes); access via `authz.check()` on the file as an object — no parallel ACL; emits `aud`; promotes `file` in `docs/ids.md`. Filed by SiteSource |
 | [0021](./0021-flags-primitive.md) | Feature-flags primitive (`flag`) (v0.4 — Proposed) | Boolean flags + ordered targeting rules; targeting reuses `authz` `check()`/tuples (no new DSL); deterministic SHA-256 bucketing pinned for cross-SDK identity; `evaluate` hot-path/unaudited; emits `aud`; promotes `flag` in `docs/ids.md`. Filed by SiteSource |
+| [0022](./0022-notify-primitive.md) | Notifications primitive (`not`) (v0.4 — Proposed) | Per-recipient record/event primitive (NOT a delivery engine — no SMTP/SMS/push/templating/retry); lifecycle `unread ⇄ read → dismissed`; strictly recipient-scoped access; emits `aud`; promotes `not` in `docs/ids.md`. Filed by SiteSource |
 
 ## Writing a new ADR
 

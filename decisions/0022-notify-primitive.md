@@ -1,11 +1,9 @@
-# Notifications primitive (`not`)
+# 0022 — Notifications primitive (`not`)
 
 **Status:** Proposed (v0.4)
 **Date:** 2026-06-05
 **Deciders:** Flametrench stewards
 **Filed by:** SiteSource (primary consumer)
-
-> Number-less draft: the ADR number is assigned at PR-open / acceptance per the `decisions/README.md` numbering rule.
 
 ## Context
 
