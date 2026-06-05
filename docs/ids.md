@@ -73,6 +73,7 @@ The following type prefixes are registered by the current specification:
 | `aud`  | Audit event             | Audit (v0.4; ADR 0019)                   |
 | `file` | File metadata           | Files (v0.4; ADR 0020)                   |
 | `flag` | Feature flag            | Feature flags (v0.4; ADR 0021)           |
+| `not`  | Notification            | Notifications (v0.4; ADR 0022)           |
 
 The `pat` bearer token uses a two-part `pat_<32hex-id>_<secret>` wire format (id-then-secret, split on the second underscore — the base64url secret MAY itself contain `_`/`-`); see [ADR 0016](../decisions/0016-personal-access-tokens.md) for the normative format and verification rules. The `pat_<32hex>` row identifier follows the standard `{type}_{hex}` encoding above.
 
@@ -82,7 +83,6 @@ Reserved prefixes for future capabilities (not usable in v0.2 implementations):
 
 | Prefix  | Planned resource        | Capability      | Status        |
 | ------- | ----------------------- | --------------- | ------------- |
-| `not`   | Notification            | Notifications   | Reserved      |
 | `sub`   | Subscription            | Billing         | Reserved      |
 
 Prefix selection rules for future additions:
