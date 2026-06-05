@@ -176,6 +176,13 @@
       "capability": "identity",
       "operation": "resolve_bearer",
       "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/authorization/rewrite-rules/depth-limit-exceeded.json",
+      "capability": "authorization",
+      "operation": "check",
+      "conformance_level": "MUST",
+      "runnable_today": true
     }
   ]
 }

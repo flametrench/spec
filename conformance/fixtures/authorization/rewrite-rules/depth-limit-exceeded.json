@@ -1,0 +1,134 @@
+{
+  "$schema": "../../../fixture.schema.json",
+  "spec_version": "0.2.0",
+  "capability": "authorization",
+  "operation": "check",
+  "conformance_level": "MUST",
+  "spec_section": "decisions/0007-authorization-rewrite-rules.md",
+  "description": "Rewrite-rule depth bound (ADR 0007 / ADR 0023 #6): the default max_depth is 8. A tuple_to_userset chain requiring 12 hops to reach the grant exceeds it, so check() MUST raise EvaluationLimitExceededError rather than traverse unbounded. 12 hops is chosen well above the floor of 8 so the assertion holds regardless of exact hop-vs-node counting.",
+  "tests": [
+    {
+      "id": "rewrite.depth-limit.twelve-hop-chain-exceeds-default-8",
+      "description": "node.viewer <- this ∪ tuple_to_userset(parent -> viewer). A 12-link parent chain n0<-n1<-...<-n12 with usr viewer on n12; checking usr viewer on n0 would need 12 hops, exceeding the default depth bound of 8. MUST raise EvaluationLimitExceededError.",
+      "rules": {
+        "node": {
+          "viewer": [
+            {
+              "type": "this"
+            },
+            {
+              "type": "tuple_to_userset",
+              "tupleset_relation": "parent",
+              "computed_userset_relation": "viewer"
+            }
+          ]
+        }
+      },
+      "input": {
+        "given_tuples": [
+          {
+            "subject_type": "node",
+            "subject_id": "0190f2a8-1b3c-7abc-8123-000000000001",
+            "relation": "parent",
+            "object_type": "node",
+            "object_id": "0190f2a8-1b3c-7abc-8123-000000000000"
+          },
+          {
+            "subject_type": "node",
+            "subject_id": "0190f2a8-1b3c-7abc-8123-000000000002",
+            "relation": "parent",
+            "object_type": "node",
+            "object_id": "0190f2a8-1b3c-7abc-8123-000000000001"
+          },
+          {
+            "subject_type": "node",
+            "subject_id": "0190f2a8-1b3c-7abc-8123-000000000003",
+            "relation": "parent",
+            "object_type": "node",
+            "object_id": "0190f2a8-1b3c-7abc-8123-000000000002"
+          },
+          {
+            "subject_type": "node",
+            "subject_id": "0190f2a8-1b3c-7abc-8123-000000000004",
+            "relation": "parent",
+            "object_type": "node",
+            "object_id": "0190f2a8-1b3c-7abc-8123-000000000003"
+          },
+          {
+            "subject_type": "node",
+            "subject_id": "0190f2a8-1b3c-7abc-8123-000000000005",
+            "relation": "parent",
+            "object_type": "node",
+            "object_id": "0190f2a8-1b3c-7abc-8123-000000000004"
+          },
+          {
+            "subject_type": "node",
+            "subject_id": "0190f2a8-1b3c-7abc-8123-000000000006",
+            "relation": "parent",
+            "object_type": "node",
+            "object_id": "0190f2a8-1b3c-7abc-8123-000000000005"
+          },
+          {
+            "subject_type": "node",
+            "subject_id": "0190f2a8-1b3c-7abc-8123-000000000007",
+            "relation": "parent",
+            "object_type": "node",
+            "object_id": "0190f2a8-1b3c-7abc-8123-000000000006"
+          },
+          {
+            "subject_type": "node",
+            "subject_id": "0190f2a8-1b3c-7abc-8123-000000000008",
+            "relation": "parent",
+            "object_type": "node",
+            "object_id": "0190f2a8-1b3c-7abc-8123-000000000007"
+          },
+          {
+            "subject_type": "node",
+            "subject_id": "0190f2a8-1b3c-7abc-8123-000000000009",
+            "relation": "parent",
+            "object_type": "node",
+            "object_id": "0190f2a8-1b3c-7abc-8123-000000000008"
+          },
+          {
+            "subject_type": "node",
+            "subject_id": "0190f2a8-1b3c-7abc-8123-000000000010",
+            "relation": "parent",
+            "object_type": "node",
+            "object_id": "0190f2a8-1b3c-7abc-8123-000000000009"
+          },
+          {
+            "subject_type": "node",
+            "subject_id": "0190f2a8-1b3c-7abc-8123-000000000011",
+            "relation": "parent",
+            "object_type": "node",
+            "object_id": "0190f2a8-1b3c-7abc-8123-000000000010"
+          },
+          {
+            "subject_type": "node",
+            "subject_id": "0190f2a8-1b3c-7abc-8123-000000000012",
+            "relation": "parent",
+            "object_type": "node",
+            "object_id": "0190f2a8-1b3c-7abc-8123-000000000011"
+          },
+          {
+            "subject_type": "usr",
+            "subject_id": "usr_0190f2a81b3c7abc8123000000000001",
+            "relation": "viewer",
+            "object_type": "node",
+            "object_id": "0190f2a8-1b3c-7abc-8123-000000000012"
+          }
+        ],
+        "check": {
+          "subject_type": "usr",
+          "subject_id": "usr_0190f2a81b3c7abc8123000000000001",
+          "relation": "viewer",
+          "object_type": "node",
+          "object_id": "0190f2a8-1b3c-7abc-8123-000000000000"
+        }
+      },
+      "expected": {
+        "error": "EvaluationLimitExceededError"
+      }
+    }
+  ]
+}
