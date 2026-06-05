@@ -32,7 +32,7 @@
         },
         "capability": {
           "type": "string",
-          "enum": ["ids", "identity", "tenancy", "authorization"]
+          "enum": ["ids", "identity", "tenancy", "authorization", "audit", "file-metadata", "flags", "notifications"]
         },
         "operation": {
           "type": "string",

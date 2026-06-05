@@ -18,8 +18,8 @@
     },
     "capability": {
       "type": "string",
-      "enum": ["ids", "identity", "tenancy", "authorization"],
-      "description": "Which Flametrench v0.1 capability this fixture exercises."
+      "enum": ["ids", "identity", "tenancy", "authorization", "audit", "file-metadata", "flags", "notifications"],
+      "description": "Which Flametrench capability this fixture exercises."
     },
     "operation": {
       "type": "string",
