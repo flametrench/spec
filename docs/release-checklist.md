@@ -283,12 +283,10 @@ treated as advisory. It must be a hard gate.
 
 ### PyPI (Python packages)
 
-- Currently externally blocked on org approval. Local wheels are
-  built and validated in `*-python/dist/`; `twine check` passes.
-- When unblocked: `twine upload`, in dependency order: `ids` first
-  (others depend on it), then identity / tenancy / authz in any order.
-- Wheel content vs source: wheels include the full src tree (no
-  separate `dist/` build). Stale-build risk lower than Node.
+- **Status:** Published via Trusted Publishing (GitHub Actions OIDC); org migration deferred.
+- **Process:** `twine upload`, in dependency order: `ids` first (others depend on it), then identity / tenancy / authz in any order. Use GitHub Actions Trusted Publisher credentials (no long-lived API token).
+- Wheel content vs source: wheels include the full src tree (no separate `dist/` build). Stale-build risk lower than Node.
+- **PyPI Org note:** A PyPI Organization is purely a management/namespace layer, not a prerequisite for publishing. The four package names (`flametrench-ids`, `flametrench-identity`, `flametrench-tenancy`, `flametrench-authz`) can migrate to an org later via PyPI's project-move feature with zero disruption to consumers.
 
 ### Maven Central (Java packages)
 
