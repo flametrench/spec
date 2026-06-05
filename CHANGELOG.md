@@ -2,7 +2,7 @@
 
 All notable spec changes are recorded here. Adopter-facing migration guidance lives in [`docs/migrating-to-v0.3.md`](docs/migrating-to-v0.3.md) (and [`docs/migrating-to-v0.2.md`](docs/migrating-to-v0.2.md) for v0.1 → v0.2). Per-SDK changelogs live in their respective repos; this file tracks the spec contract only.
 
-## [v0.3.0] — 2026-05-15 (release hold for Go SDK addition; ADR 0018)
+## [v0.3.0] — Unreleased (hold for Go SDK; ADR 0018)
 
 v0.3.0 stable cutoff. Flips ADRs 0016 (personal access tokens), 0017 (Postgres rewrite-rule evaluation), **and 0018 (Go SDK family addition)** from Proposed to Accepted. SDK families snap to v0.3.0 across PHP / Node / Python / Java for `ids` / `identity` / `authz`; `tenancy` bumps from 0.2.1 to 0.3.0 (Node) for SDK matrix uniformity — no surface changes in tenancy. **Go joins as the 5th SDK family** at v0.3.0 — `github.com/flametrench/flametrench-go` (monorepo with one `go.mod` per package). The v0.3.0 cut is held ~2-3 weeks so all 5 families ship in lockstep — see ADR 0018 for the rationale. The full v0.3 security audit (32 findings) is closed: 22 fixed in code, 7 spec-documented, 2 explicit v0.4 deferrals (L4, F2). Canonical remediation table at [`docs/security-audit-v0.3.md`](docs/security-audit-v0.3.md).
 

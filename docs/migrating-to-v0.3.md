@@ -2,7 +2,7 @@
 
 This guide is for applications already running on a v0.2 Flametrench SDK that want to adopt v0.3.
 
-**Status:** v0.3.0 is stable as of 2026-05-15. Adopt it on a non-production environment first, file issues at [`flametrench/spec`](https://github.com/flametrench/spec/issues), and roll forward to production once your acceptance tests pass.
+**Status:** v0.3.0 is stable. Adopt it on a non-production environment first, file issues at [`flametrench/spec`](https://github.com/flametrench/spec/issues), and roll forward to production once your acceptance tests pass.
 
 The migration is **additive at the v0.2 wire surface**: every v0.2 call site keeps working unchanged. v0.3 adds two new capabilities (personal access tokens, Postgres-backed rewrite-rule evaluation), one schema relax (`tup.subject_type` check constraint), and an additive audit-log discriminator (`auth.kind`). The security audit completed during the v0.3 cycle also produced 22 in-code fixes that ship inside the SDK upgrade — no caller change required for any of them.
 
@@ -197,7 +197,7 @@ go get github.com/flametrench/flametrench-go/packages/tenancy@v0.3.0
 go get github.com/flametrench/flametrench-go/packages/authz@v0.3.0
 ```
 
-`tenancy` bumps to 0.3.0 across all families with no surface changes — the version is moving in lockstep with the SDK matrix. Go is new in v0.3 (ADR 0018); adopters who want to consume Flametrench from Go services should start here. The Go SDK conforms to the same fixture corpus as Python / Node / PHP / Java, so wire-format and Argon2id PHC interop is mechanical.
+`tenancy` bumps to 0.3.0 across all families with no surface changes — the version is moving in lockstep with the SDK matrix. Go is new in v0.3 (ADR 0018); adopters who want to consume Flametrench from Go services should start here. The Go SDK is designed to conform to the same fixture corpus as Python / Node / PHP / Java, so wire-format and Argon2id PHC interop is mechanical once the full fixture runner is verified.
 
 ## 7. Security audit changes you inherit
 
