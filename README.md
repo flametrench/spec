@@ -74,7 +74,7 @@ Flametrench ships five first-party SDK families, all conforming to the same fixt
 
 A framework adapter for Laravel ([`flametrench/laravel`](https://github.com/flametrench/laravel)) layers on top of the PHP SDK family.
 
-A conformance test suite lives alongside the specification (29 fixture files spanning v0.1.0, v0.2.0, and v0.3.0). SDKs claim compliance by running the fixtures against themselves; cross-language parity is enforced by the same fixtures consumed by all five families.
+A conformance test suite lives alongside the specification (29 fixture files spanning v0.1.0, v0.2.0, and v0.3.0). SDKs claim compliance by running the fixtures against themselves; cross-language parity is enforced by the same fixtures consumed by the four conformance-verified families. The Go family is built against the same corpus, with conformance verification in progress (rc.1 available).
 
 ## What this specification defines
 
