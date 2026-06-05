@@ -56,7 +56,7 @@ Consistent casing guarantees byte-identical encodings across SDKs and simplifies
 
 ## Type prefix registry
 
-The following type prefixes are reserved by the current specification (v0.2):
+The following type prefixes are registered by the current specification:
 
 | Prefix | Resource                | Capability                               |
 | ------ | ----------------------- | ---------------------------------------- |
@@ -69,6 +69,9 @@ The following type prefixes are reserved by the current specification (v0.2):
 | `inv`  | Invitation              | Tenancy                                  |
 | `tup`  | Authorization tuple     | Authorization                            |
 | `shr`  | Share token             | Authorization (v0.2; ADR 0012)           |
+| `pat`  | Personal access token   | Identity (v0.3; ADR 0016)                |
+
+The `pat` bearer token uses a two-part `pat_<32hex-id>_<secret>` wire format (id-then-secret, split on the second underscore — the base64url secret MAY itself contain `_`/`-`); see [ADR 0016](../decisions/0016-personal-access-tokens.md) for the normative format and verification rules. The `pat_<32hex>` row identifier follows the standard `{type}_{hex}` encoding above.
 
 Implementations MUST NOT invent new type prefixes. New prefixes are added by amending this document through the specification's change process.
 

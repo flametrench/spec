@@ -15,6 +15,8 @@ ADRs are historical: once accepted, the content of an ADR is frozen. Future desi
 
 ADRs are numbered sequentially from 0001 in the order accepted. Numbers never change, are never reused, and are never reclaimed from withdrawn ADRs.
 
+**Drafts are number-less.** Because the number is determined by *acceptance order* — not by when drafting begins — do not bake an ADR number into a draft (filename, title, or cross-references) while it is still being written. Refer to a pending ADR by its primitive/topic name. **Assign the next free number at PR-open time**, in the order PRs are opened for merge, and open **one ADR per PR**. This prevents the collision class where two concurrently-drafted ADRs (or an adopter's externally-numbered draft) both claim the same number and one has to be renumbered late. A number is only *fixed* once its PR merges.
+
 ## Current ADRs
 
 | # | Title | Topic |
