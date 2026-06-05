@@ -189,13 +189,14 @@ jobs:
           path: sdk
 
       - name: Checkout flametrench/ids-python
-        # ids-python is the upstream dep for the other Python SDKs;
-        # bootstrap it from the sibling repo until v0.2.x is on PyPI.
+        # ids-python is the upstream dep for the other Python SDKs. Build it
+        # from the sibling repo's default branch — version-coordinated with the
+        # SDK under test — rather than a pinned (and stale) tag or PyPI, which
+        # is not yet published. CI must not depend on an unpublished registry.
         if: matrix.sdk != 'ids-python'
         uses: actions/checkout@v4
         with:
           repository: flametrench/ids-python
-          ref: v0.2.0rc3
           path: _vendored/ids-python
 
       - name: Overlay live spec fixtures
@@ -233,15 +234,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - sdk: ids-java
-            ids_ref: v0.2.0-rc.2
-          - sdk: identity-java
-            ids_ref: v0.2.0-rc.1
-          - sdk: tenancy-java
-            ids_ref: v0.1.0
-          - sdk: authz-java
-            ids_ref: v0.2.0-rc.2
+        sdk: [ids-java, identity-java, tenancy-java, authz-java]
     steps:
       - name: Checkout spec
         uses: actions/checkout@v4
@@ -255,11 +248,15 @@ jobs:
           path: sdk
 
       - name: Checkout flametrench/ids-java
+        # Build the ids dep from ids-java's default branch — version-coordinated
+        # with the SDK under test — instead of a pinned (stale) tag. The SDK
+        # poms depend on dev.flametrench:ids at the current development version;
+        # resolving it from Maven Central fails because we have not published
+        # there. CI must not depend on an unpublished registry.
         if: matrix.sdk != 'ids-java'
         uses: actions/checkout@v4
         with:
           repository: flametrench/ids-java
-          ref: ${{ matrix.ids_ref }}
           path: _vendored/ids-java
 
       - name: Overlay live spec fixtures

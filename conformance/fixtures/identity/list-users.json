@@ -12,15 +12,39 @@
       "description": "list_users with no filters returns all users in id ASC order. UUIDv7 makes this approximately creation-time-ordered.",
       "users": [],
       "steps": [
-        { "op": "create_user", "captures": { "u1": "user.id" } },
-        { "op": "create_user", "captures": { "u2": "user.id" } },
-        { "op": "create_user", "captures": { "u3": "user.id" } },
+        {
+          "op": "create_user",
+          "captures": {
+            "u1": "user.id"
+          },
+          "input": {}
+        },
+        {
+          "op": "create_user",
+          "captures": {
+            "u2": "user.id"
+          },
+          "input": {}
+        },
+        {
+          "op": "create_user",
+          "captures": {
+            "u3": "user.id"
+          },
+          "input": {}
+        },
         {
           "op": "list_users",
           "input": {},
           "expected": {
-            "data_ids_in_order": ["{u1}", "{u2}", "{u3}"],
-            "next_cursor": null
+            "result": {
+              "data_ids_in_order": [
+                "{u1}",
+                "{u2}",
+                "{u3}"
+              ],
+              "next_cursor": null
+            }
           }
         }
       ]
@@ -30,21 +54,50 @@
       "description": "Filtering by status returns only matching users. Suspended users are excluded when status='active'.",
       "users": [],
       "steps": [
-        { "op": "create_user", "captures": { "active_id": "user.id" } },
-        { "op": "create_user", "captures": { "suspended_id": "user.id" } },
-        { "op": "suspend_user", "input": { "usr_id": "{suspended_id}" } },
         {
-          "op": "list_users",
-          "input": { "status": "active" },
-          "expected": {
-            "data_ids_in_order": ["{active_id}"]
+          "op": "create_user",
+          "captures": {
+            "active_id": "user.id"
+          },
+          "input": {}
+        },
+        {
+          "op": "create_user",
+          "captures": {
+            "suspended_id": "user.id"
+          },
+          "input": {}
+        },
+        {
+          "op": "suspend_user",
+          "input": {
+            "usr_id": "{suspended_id}"
           }
         },
         {
           "op": "list_users",
-          "input": { "status": "suspended" },
+          "input": {
+            "status": "active"
+          },
           "expected": {
-            "data_ids_in_order": ["{suspended_id}"]
+            "result": {
+              "data_ids_in_order": [
+                "{active_id}"
+              ]
+            }
+          }
+        },
+        {
+          "op": "list_users",
+          "input": {
+            "status": "suspended"
+          },
+          "expected": {
+            "result": {
+              "data_ids_in_order": [
+                "{suspended_id}"
+              ]
+            }
           }
         }
       ]
@@ -54,14 +107,37 @@
       "description": "Revoked users appear under status='revoked' but are excluded by default-active filter.",
       "users": [],
       "steps": [
-        { "op": "create_user", "captures": { "live_id": "user.id" } },
-        { "op": "create_user", "captures": { "dead_id": "user.id" } },
-        { "op": "revoke_user", "input": { "usr_id": "{dead_id}" } },
+        {
+          "op": "create_user",
+          "captures": {
+            "live_id": "user.id"
+          },
+          "input": {}
+        },
+        {
+          "op": "create_user",
+          "captures": {
+            "dead_id": "user.id"
+          },
+          "input": {}
+        },
+        {
+          "op": "revoke_user",
+          "input": {
+            "usr_id": "{dead_id}"
+          }
+        },
         {
           "op": "list_users",
-          "input": { "status": "revoked" },
+          "input": {
+            "status": "revoked"
+          },
           "expected": {
-            "data_ids_in_order": ["{dead_id}"]
+            "result": {
+              "data_ids_in_order": [
+                "{dead_id}"
+              ]
+            }
           }
         }
       ]
@@ -73,24 +149,46 @@
       "steps": [
         {
           "op": "create_user_with_password_credential",
-          "input": { "identifier": "alice@example.com", "password": "long-enough-password-for-floor" },
-          "captures": { "alice_id": "user.id" }
+          "input": {
+            "identifier": "alice@example.com",
+            "password": "long-enough-password-for-floor"
+          },
+          "captures": {
+            "alice_id": "user.id"
+          }
         },
         {
           "op": "create_user_with_password_credential",
-          "input": { "identifier": "bob@example.com", "password": "long-enough-password-for-floor" },
-          "captures": { "bob_id": "user.id" }
+          "input": {
+            "identifier": "bob@example.com",
+            "password": "long-enough-password-for-floor"
+          },
+          "captures": {
+            "bob_id": "user.id"
+          }
         },
         {
           "op": "create_user_with_password_credential",
-          "input": { "identifier": "carol@other.test", "password": "long-enough-password-for-floor" },
-          "captures": { "carol_id": "user.id" }
+          "input": {
+            "identifier": "carol@other.test",
+            "password": "long-enough-password-for-floor"
+          },
+          "captures": {
+            "carol_id": "user.id"
+          }
         },
         {
           "op": "list_users",
-          "input": { "query": "example" },
+          "input": {
+            "query": "example"
+          },
           "expected": {
-            "data_ids_unordered": ["{alice_id}", "{bob_id}"]
+            "result": {
+              "data_ids_unordered": [
+                "{alice_id}",
+                "{bob_id}"
+              ]
+            }
           }
         }
       ]
@@ -102,14 +200,25 @@
       "steps": [
         {
           "op": "create_user_with_password_credential",
-          "input": { "identifier": "alice@example.com", "password": "long-enough-password-for-floor" },
-          "captures": { "alice_id": "user.id" }
+          "input": {
+            "identifier": "alice@example.com",
+            "password": "long-enough-password-for-floor"
+          },
+          "captures": {
+            "alice_id": "user.id"
+          }
         },
         {
           "op": "list_users",
-          "input": { "query": "EXAMPLE" },
+          "input": {
+            "query": "EXAMPLE"
+          },
           "expected": {
-            "data_ids_unordered": ["{alice_id}"]
+            "result": {
+              "data_ids_unordered": [
+                "{alice_id}"
+              ]
+            }
           }
         }
       ]
@@ -121,18 +230,30 @@
       "steps": [
         {
           "op": "create_user_with_password_credential",
-          "input": { "identifier": "gone@example.com", "password": "long-enough-password-for-floor" },
-          "captures": { "user_id": "user.id", "cred_id": "credential.id" }
+          "input": {
+            "identifier": "gone@example.com",
+            "password": "long-enough-password-for-floor"
+          },
+          "captures": {
+            "user_id": "user.id",
+            "cred_id": "credential.id"
+          }
         },
         {
           "op": "revoke_credential",
-          "input": { "cred_id": "{cred_id}" }
+          "input": {
+            "cred_id": "{cred_id}"
+          }
         },
         {
           "op": "list_users",
-          "input": { "query": "gone@example.com" },
+          "input": {
+            "query": "gone@example.com"
+          },
           "expected": {
-            "data_ids_unordered": []
+            "result": {
+              "data_ids_unordered": []
+            }
           }
         }
       ]
@@ -142,33 +263,89 @@
       "description": "Calling list_users with the next_cursor returns the next page; the final page returns next_cursor=null.",
       "users": [],
       "steps": [
-        { "op": "create_user", "captures": { "u1": "user.id" } },
-        { "op": "create_user", "captures": { "u2": "user.id" } },
-        { "op": "create_user", "captures": { "u3": "user.id" } },
-        { "op": "create_user", "captures": { "u4": "user.id" } },
-        { "op": "create_user", "captures": { "u5": "user.id" } },
+        {
+          "op": "create_user",
+          "captures": {
+            "u1": "user.id"
+          },
+          "input": {}
+        },
+        {
+          "op": "create_user",
+          "captures": {
+            "u2": "user.id"
+          },
+          "input": {}
+        },
+        {
+          "op": "create_user",
+          "captures": {
+            "u3": "user.id"
+          },
+          "input": {}
+        },
+        {
+          "op": "create_user",
+          "captures": {
+            "u4": "user.id"
+          },
+          "input": {}
+        },
+        {
+          "op": "create_user",
+          "captures": {
+            "u5": "user.id"
+          },
+          "input": {}
+        },
         {
           "op": "list_users",
-          "input": { "limit": 2 },
-          "captures": { "page1_cursor": "page.next_cursor" },
+          "input": {
+            "limit": 2
+          },
+          "captures": {
+            "page1_cursor": "page.next_cursor"
+          },
           "expected": {
-            "data_ids_in_order": ["{u1}", "{u2}"]
+            "result": {
+              "data_ids_in_order": [
+                "{u1}",
+                "{u2}"
+              ]
+            }
           }
         },
         {
           "op": "list_users",
-          "input": { "cursor": "{page1_cursor}", "limit": 2 },
-          "captures": { "page2_cursor": "page.next_cursor" },
+          "input": {
+            "cursor": "{page1_cursor}",
+            "limit": 2
+          },
+          "captures": {
+            "page2_cursor": "page.next_cursor"
+          },
           "expected": {
-            "data_ids_in_order": ["{u3}", "{u4}"]
+            "result": {
+              "data_ids_in_order": [
+                "{u3}",
+                "{u4}"
+              ]
+            }
           }
         },
         {
           "op": "list_users",
-          "input": { "cursor": "{page2_cursor}", "limit": 2 },
+          "input": {
+            "cursor": "{page2_cursor}",
+            "limit": 2
+          },
           "expected": {
-            "data_ids_in_order": ["{u5}"],
-            "next_cursor": null
+            "result": {
+              "data_ids_in_order": [
+                "{u5}"
+              ],
+              "next_cursor": null
+            }
           }
         }
       ]
@@ -182,8 +359,10 @@
           "op": "list_users",
           "input": {},
           "expected": {
-            "data_ids_in_order": [],
-            "next_cursor": null
+            "result": {
+              "data_ids_in_order": [],
+              "next_cursor": null
+            }
           }
         }
       ]
@@ -195,17 +374,29 @@
       "steps": [
         {
           "op": "create_user",
-          "input": { "display_name": "Alice" },
-          "captures": { "alice_id": "user.id" }
+          "input": {
+            "display_name": "Alice"
+          },
+          "captures": {
+            "alice_id": "user.id"
+          }
         },
-        { "op": "create_user", "captures": { "bob_id": "user.id" } },
+        {
+          "op": "create_user",
+          "captures": {
+            "bob_id": "user.id"
+          },
+          "input": {}
+        },
         {
           "op": "list_users",
           "input": {},
           "expected": {
-            "user_display_names": {
-              "{alice_id}": "Alice",
-              "{bob_id}": null
+            "result": {
+              "user_display_names": {
+                "{alice_id}": "Alice",
+                "{bob_id}": null
+              }
             }
           }
         }
