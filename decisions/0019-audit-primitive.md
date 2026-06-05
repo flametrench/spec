@@ -27,8 +27,9 @@ The `aud` prefix moves from "Reserved" to the active type-prefix registry in [`d
 AuditEvent = {
   id:            aud_<32hex>            // wire; UUIDv7 underneath
   occurred_at:   timestamptz            // when the action occurred (emitter clock)
-  actor_usr_id:  usr_<32hex> | null     // owning human; null IFF auth.kind = "system"
-  auth: {
+  recorded_at:   timestamptz            // server-authoritative: when the audit service durably recorded it
+  actor_usr_id:  usr_<32hex> | null     // owning human; null when no human principal (system, or pre-auth/anonymous)
+  auth?: {                              // OPTIONAL — absent when there is no established principal (pre-auth / anonymous / failed login)
     kind:        "session"|"pat"|"share"|"system"   // ADR 0016 canonical vocabulary, verbatim
     session_id?: ses_<32hex>            // present IFF kind = "session"
     pat_id?:     pat_<32hex>            // present IFF kind = "pat"
@@ -37,19 +38,18 @@ AuditEvent = {
   }
   on_behalf?: {                         // present IFF a delegated non-human actor performed the action
     agent_id:    string                 // REQUIRED; opaque, adopter-defined; primitive does not parse it
-    // OPTIONAL free-form sub-map for adopter protocol markers (e.g. {"protocol":"mcp"})
   }
   action:        string                 // adopter-namespaced "{capability}.{verb}[.{object}]"; opaque to the primitive
   target: {
     kind:        string                 // Flametrench entity type, OR adopter object_type (^[a-z]{2,6}$)
     id:          string                 // Flametrench id (decodable), OR opaque adopter resource id
   }
-  scope: {
+  scope?: {                             // OPTIONAL — absent for global / non-org-scoped events (e.g. login, or no resolvable scope)
     kind:        string                 // tenancy boundary kind, e.g. "org"
     id:          string                 // e.g. org_<32hex>
   }
   outcome:       "success"|"failure"|"denied"|"pending"
-  metadata:      object                 // free-form; adopter protocol layering (e.g. {"mcp":true}) lives here
+  metadata:      object                 // free-form; adopter protocol layering (e.g. {"mcp":true}) lives here — the ONLY place for protocol markers
   context?: {                           // OPTIONAL request context
     request_id?: string
     ip?:         string
@@ -64,9 +64,10 @@ AuditEvent = {
 {
   "id": "aud_0190f2a81b3c7abc8123000000000001",
   "occurred_at": "2026-06-05T10:00:00.000Z",
+  "recorded_at": "2026-06-05T10:00:00.014Z",
   "actor_usr_id": "usr_0190f2a81b3c7abc8123000000000002",
   "auth": { "kind": "pat", "pat_id": "pat_0190f2a81b3c7abc8123000000000003" },
-  "on_behalf": { "agent_id": "assistant-prod-7", "protocol": "mcp" },
+  "on_behalf": { "agent_id": "assistant-prod-7" },
   "action": "data.create.record",
   "target": { "kind": "doc", "id": "doc_2f9c1a..." },
   "scope": { "kind": "org", "id": "org_0190f2a81b3c7abc8123000000000004" },
@@ -76,9 +77,31 @@ AuditEvent = {
 }
 ```
 
+The MCP protocol marker lives **only** in `metadata` (`{"mcp": true}`); `on_behalf` carries just the opaque `agent_id`.
+
+**Pre-authentication example** (a failed login — no established principal, no org scope):
+
+```json
+{
+  "id": "aud_0190f2a81b3c7abc8123000000000005",
+  "occurred_at": "2026-06-05T10:01:00.000Z",
+  "recorded_at": "2026-06-05T10:01:00.009Z",
+  "actor_usr_id": null,
+  "action": "identity.login",
+  "target": { "kind": "usr", "id": "usr_0190f2a81b3c7abc8123000000000002" },
+  "outcome": "failure",
+  "metadata": { "reason": "bad_credential" },
+  "context": { "ip": "192.0.2.9" }
+}
+```
+
+Here `auth` and `scope` are both **absent**: the login attempt established no principal and is not org-scoped. `actor_usr_id` is `null`. The claimed identity, if any, MAY appear in `target` or `metadata` — but it is unverified, so it is not an `actor`.
+
 ### `auth.kind` and `system` (fulfilling ADR 0016)
 
-`auth.kind` is ADR 0016's frozen vocabulary, adopted verbatim. Exactly one kind-specific id field MUST be present and MUST match `kind`. This ADR defines the kind 0016 deferred:
+`auth` is **optional**. When present, `auth.kind` is ADR 0016's frozen vocabulary, adopted verbatim, and exactly one kind-specific id field MUST be present and MUST match `kind`. **`auth` is absent when there is no established principal** — a pre-authentication attempt, an anonymous request, or a **failed login**. These are core audit events (a failed login is one of the most important things to log), and they have no representable `(actor_usr_id, auth.kind)`; absence of `auth` (with `actor_usr_id: null`) is exactly how they are recorded. Making `auth` optional does **not** fork 0016's vocabulary — the four kinds are unchanged; an event simply may have no `auth` at all. A claimed-but-unverified identity on a failed attempt MAY appear in `target`/`metadata`, but it is unverified and therefore not an `actor`.
+
+This ADR defines the kind 0016 deferred:
 
 - **`system`** — automation with no human owner (service-to-service calls, scheduled jobs, platform actions). For `kind = "system"`, `actor_usr_id` MUST be `null` and `auth.system_id` MUST carry an opaque, adopter-defined principal (a service name or automation id). The primitive does not parse `system_id`. Service-to-service authentication is `system`; there is no separate `service` kind (it would fork the frozen vocabulary for no benefit).
 
@@ -88,8 +111,12 @@ A delegated non-human actor (e.g. an AI agent) is a **different axis** from the 
 
 - `on_behalf` is present IFF a delegated non-human actor performed the action.
 - `on_behalf.agent_id` is REQUIRED and is an **opaque, adopter-defined string**. This ADR does **not** mint an `agt_` (or any) id prefix — agent identity is a separate concern that would be its own primitive; smuggling it in here would violate one-primitive-at-a-time and require an `ids.md` amendment this ADR does not make. If a future agent-identity primitive lands, `on_behalf.agent_id` becomes its reference; until then it is opaque.
-- Protocol-specific markers (e.g. an MCP flag) are adopter layering and MUST live in `metadata` or in `on_behalf`'s optional free-form sub-map — never as a normative `aud` field. The primitive stays protocol-agnostic.
-- `on_behalf` is orthogonal to `auth.kind` and MAY co-occur with **any** kind, including `system` — an autonomous agent with no granting human is `actor_usr_id: null`, `auth.kind: "system"`, `on_behalf.agent_id: <opaque>`.
+- `on_behalf` carries **only** `agent_id`. Protocol-specific markers (e.g. an MCP flag) are adopter layering and MUST live in `metadata` — never inside `on_behalf`, and never as a normative `aud` field. The primitive stays protocol-agnostic.
+- `on_behalf` is orthogonal to `auth` and MAY co-occur with **any** `auth.kind` (including `system`) **or with no `auth` at all** — an autonomous agent with no granting human is `actor_usr_id: null`, `auth.kind: "system"`, `on_behalf.agent_id: <opaque>`.
+
+### `scope` (optional)
+
+`scope` is **optional**. It names the tenancy boundary the action occurred within (typically `{ kind: "org", id: org_<32hex> }`). It is **absent for events that are not org-scoped**: global identity actions (a login is not scoped to an org), and the no-resolvable-scope case (e.g. a `system` actor, or the cross-scope-probe fallback below). An absent `scope` denotes a **global / system event**, recorded to the system/global audit stream. Consumers querying a specific org's events filter on `scope.id`; global events are reached via the system/global stream, not an org-scoped query.
 
 ### Identifiers in `target` and `scope` (Flametrench vs adopter)
 
@@ -100,7 +127,7 @@ A delegated non-human actor (e.g. an AI agent) is a **different axis** from the 
 
 ### `action`
 
-`action` is an adopter-namespaced string of the form `{capability}.{verb}` or `{capability}.{verb}.{object}` (e.g. `identity.login`, `tenancy.invitation_accepted`, `data.create.record`). The capability namespace is owned by the emitting service; Flametrench owns `identity.*`/`tenancy.*`/`authz.*`/`audit.*`, adopters own theirs. The primitive treats `action` as **opaque** — it stores and filters on it (including prefix filters) but does not interpret it.
+`action` is an adopter-namespaced string of the form `{capability}.{verb}` or `{capability}.{verb}.{object}` (e.g. `identity.login`, `tenancy.invitation_accepted`, `data.create.record`). The capability namespace is owned by the emitting service; Flametrench owns `identity.*`/`tenancy.*`/`authz.*`/`audit.*` and the v0.4 primitive namespaces `file.*`/`flag.*`/`notify.*`; adopters own theirs. (The `notify.*` action namespace pairs with the `not` id prefix — action namespaces follow the capability name, not the id prefix, exactly as `audit.*` pairs with `aud`.) The primitive treats `action` as **opaque** — it stores and filters on it (including prefix filters) but does not interpret it.
 
 ### `outcome` (each value defined)
 
@@ -109,11 +136,16 @@ A delegated non-human actor (e.g. an AI agent) is a **different axis** from the 
 - **`denied`** — the operation was blocked by an authorization decision (an `authz` rejection). Distinct from `failure`: `denied` is a policy outcome, `failure` is a fault.
 - **`pending`** — a long-running/asynchronous operation has started but is not yet resolved. A terminal event (`success`/`failure`) is expected later; correlation is via `metadata`/`context`.
 
+### Timestamps (`occurred_at` vs `recorded_at`)
+
+- `occurred_at` is the **emitter's** clock — when the action happened. It MAY be slightly skewed or, for backfill, historical.
+- `recorded_at` is **server-authoritative** — when the audit service durably committed the event. The service sets it on `write`; emitters MUST NOT supply it. It is the trustworthy timeline for forensic ordering and for "what did we know, when," and is not subject to emitter clock skew. `recorded_at >= occurred_at` in the normal (non-backfill) case.
+
 ### Append-only semantics (normative)
 
 - Audit events are **immutable** once written. The primitive defines **no** `update` or `delete` operation. Implementations MAY compact or archive beyond a retention policy but MUST NOT modify an event's content.
 - `write` MUST be **durable before it returns success** (no fire-and-forget buffering that can lose acknowledged writes). Audit is fail-closed: if the audit write cannot be durably committed, the emitter MUST treat the audited operation as failed rather than silently proceed unlogged.
-- Implementations MUST provide total ordering of events within a single Flametrench instance (UUIDv7 `id` + `occurred_at`).
+- Implementations MUST provide total ordering of events within a single Flametrench instance (UUIDv7 `id` + `recorded_at`).
 
 ### Operations
 
@@ -163,6 +195,7 @@ Two clarifications:
 - **Pluggable storage sinks** beyond a built-in store — the wire format and operations are the load-bearing contract; a storage interface can be added later.
 - **An agent-identity primitive.** `on_behalf.agent_id` stays opaque until/unless such a primitive is filed separately. Not in scope here.
 - **`export`/SIEM wire detail** — the operation is named; its streaming envelope can be specified in the capability doc (`docs/audit.md`, follow-on) without blocking this ADR.
+- **Tamper-evidence** — cryptographic integrity of the log itself (per-event or per-segment hash-chaining, or signing) so that after-the-fact modification or deletion is detectable, not merely forbidden by the append-only contract. A valuable hardening for high-assurance deployments; deferred to keep v0.4 to the wire/semantics contract, and addable without changing the event shape (an integrity field can be additive).
 
 ## Rejected alternatives
 
