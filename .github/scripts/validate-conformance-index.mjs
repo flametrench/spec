@@ -4,18 +4,23 @@
 // fixture file itself says, and that no fixture file is missing from the
 // index. Keeps the index honest.
 
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { cwd } from "node:process";
+import { cwd, argv } from "node:process";
 
 const ROOT = cwd();
 const INDEX_PATH = join(ROOT, "conformance/index.json");
 const FIXTURES_DIR = join(ROOT, "conformance/fixtures");
+const FIX = argv.includes("--fix");
 
 const errors = [];
 function err(msg) { errors.push(msg); }
 
 const index = JSON.parse(readFileSync(INDEX_PATH, "utf8"));
+
+// Track the highest spec_version any fixture declares — the corpus's
+// effective version is derived from the fixtures, not hand-maintained.
+let maxFixtureVersion = "0.0.0";
 
 // Check each declared fixture exists and matches its metadata.
 for (const entry of index.fixtures) {
@@ -36,12 +41,27 @@ for (const entry of index.fixtures) {
   if (fixture.conformance_level !== entry.conformance_level) {
     err(`${entry.path}: index says conformance_level=${entry.conformance_level} but fixture says conformance_level=${fixture.conformance_level}`);
   }
-  // Each fixture declares the spec_version it was introduced under.
-  // The index's spec_version is the current target. v0.2 fixtures may
-  // coexist with v0.1 fixtures in the same index — what we enforce is
-  // that no fixture targets a version higher than the index.
-  if (semverGreaterThan(fixture.spec_version, index.spec_version)) {
-    err(`${entry.path}: fixture spec_version=${fixture.spec_version} exceeds index spec_version=${index.spec_version}`);
+  if (semverGreaterThan(fixture.spec_version, maxFixtureVersion)) {
+    maxFixtureVersion = fixture.spec_version;
+  }
+}
+
+// The index's spec_version MUST be at least the highest version any
+// fixture declares (a fixture can't target a version the corpus hasn't
+// reached). This is auto-derived: the floor is max(fixture.spec_version),
+// so adding the first fixture of a new spec minor without bumping the
+// index — the exact break that reddened main when the v0.4 audit fixture
+// landed under a 0.3.0 index — is caught at PR time, not after merge.
+// `--fix` raises index.spec_version to the derived floor in place.
+// (The index may legitimately LEAD the fixtures — a higher in-development
+// target with no fixtures yet — so we enforce >=, not ==.)
+if (semverGreaterThan(maxFixtureVersion, index.spec_version)) {
+  if (FIX) {
+    index.spec_version = maxFixtureVersion;
+    writeFileSync(INDEX_PATH, JSON.stringify(index, null, 2) + "\n");
+    console.log(`🔧 --fix: bumped index spec_version to ${maxFixtureVersion} (max fixture version).`);
+  } else {
+    err(`index spec_version=${index.spec_version} lags the corpus: a fixture declares spec_version=${maxFixtureVersion}. Bump index.spec_version to ${maxFixtureVersion} (or re-run with --fix).`);
   }
 }
 
