@@ -190,6 +190,13 @@
       "operation": "check",
       "conformance_level": "MUST",
       "runnable_today": true
+    },
+    {
+      "path": "fixtures/audit/write-event-shape.json",
+      "capability": "audit",
+      "operation": "write",
+      "conformance_level": "MUST",
+      "runnable_today": false
     }
   ]
 }
