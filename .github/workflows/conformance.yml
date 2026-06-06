@@ -248,15 +248,19 @@ jobs:
           path: sdk
 
       - name: Checkout flametrench/ids-java
-        # Build the ids dep from ids-java's default branch — version-coordinated
-        # with the SDK under test — instead of a pinned (stale) tag. The SDK
-        # poms depend on dev.flametrench:ids at the current development version;
-        # resolving it from Maven Central fails because we have not published
-        # there. CI must not depend on an unpublished registry.
+        # Build the ids dep from source (Maven Central is unpublished, so CI must
+        # not resolve it there). We pin to the release TAG matching the ids
+        # version the SDKs-under-test require (`v0.3.0`) rather than ids-java's
+        # default branch: ids-java main currently lags its tag (pom still 0.2.0),
+        # so building from main produces ids:0.2.0 and the SDK poms' ids:0.3.0
+        # dependency resolves to nothing. Matches the Java repos' own ci.yml.
+        # Bump this ref in lockstep when the SDKs move to a new required ids
+        # version (root fix: ids-java main pom bumped to match its tag).
         if: matrix.sdk != 'ids-java'
         uses: actions/checkout@v4
         with:
           repository: flametrench/ids-java
+          ref: v0.3.0
           path: _vendored/ids-java
 
       - name: Overlay live spec fixtures
