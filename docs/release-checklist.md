@@ -27,6 +27,8 @@ release is correct:
 | node-repo CI red on main for 5+ commits | `pnpm/action-setup@v4` started rejecting dual-spec configs (`with: version` + `packageManager:`) in a recent release; CI silently failed every push for weeks. Pre-existing schema-drift fail compounded the noise. Discovered only when the next PR landed. |
 | Go per-module tag gap — v0.3.0 + v0.3.0-rc.1 uninstallable | Go multi-module repos require per-module tags (`packages/<module>/vX.Y.Z`), not root tags. `v0.3.0` and `v0.3.0-rc.1` were tagged at the root, so `go get github.com/flametrench/flametrench-go/packages/identity@v0.3.0` returned "unknown revision." Release checklist had no Go section and missed the requirement entirely. Adopters saw 404 on install. Fixed by tagging per-module; Go proxy verification gate added to checklist. |
 | flametrench.dev spec-vs-SDK version conflation | v0.3.0 release header in spec README stated "v0.3.0 stable" over a matrix where only spec and Go were at v0.3, while PHP/Node/Python/Java remained at v0.2.x. Readers conflated "spec is v0.3" with "all SDKs are v0.3." Clarified via accurate parity wording once all families reached v0.3. |
+| Java multi-module version skew (main-pom-behind-tag) | `ids-java` was tagged at v0.3.0 but main's `pom.xml` remained at v0.2.0. Spec conformance CI fetched the tag (v0.3.0) but sibling repos' CI fetched main and got v0.2.0. Cross-repo version assertions failed; 6 spec conformance PRs turned red. Root cause: release process did not verify post-tag that main's version coordinate matches the new tag. |
+| Cross-repo version inconsistency (sibling mismatch) | SDK A depends on "SDK B @ v0.3.0"; B's main is at v0.2.0 after tagging B at v0.3.0. CI that consumes A's main gets the dependency-on-0.3.0 lock but can only find B's v0.2.0 in source, causing resolution failures. Sibling-consumption CI (e.g., spec conformance) fails even though the tag exists. Requires explicit cross-repo version alignment checks. |
 
 The pattern across these is the same: **"it works on my machine" or "the
 source is correct" was treated as a release proof.** Proof must be
@@ -189,6 +191,50 @@ publish:
       `@flametrench/identity@0.2.1`). Push tags after the publish
       succeeds, not before — a tagged-but-unpublished version is a
       release-process lie.
+
+---
+
+## Post-tag hygiene (mandatory — release-to-main synchronization)
+
+**After tagging vX.Y.Z, main's version coordinates MUST be bumped to forward-SNAPSHOT or the next minor, depending on the project's convention.** This prevents sibling repos' CI from consuming a mis-matched version (e.g., `pom.xml` at 0.2.0 while the tag is 0.3.0).
+
+- [ ] The commit(s) that added the version bump for the tag are on `main`
+      (not just on a release branch). If the tag was cut from a `release/` branch,
+      you must cherry-pick the version bump back to main or rebase main to
+      include it.
+- [ ] **Main's version coordinate (package.json, pom.xml, pyproject.toml, go.mod)
+      is EITHER:**
+  - The same version as the tag (e.g., if you tagged `v0.3.0`, main has `0.3.0` or
+    `0.3.0-SNAPSHOT`), OR
+  - Explicitly forward of the tag (e.g., tag `v0.3.0`, main has `0.3.1-SNAPSHOT` or `0.4.0-SNAPSHOT`).
+  
+  **Never** leave main behind the tag (e.g., tag `v0.3.0` while main is `0.2.0`).
+  This breaks sibling-repo CI that depends on this repo and consumes main.
+
+- [ ] CI is green on `main` after the version bump. If CI goes red from the
+      bump alone, investigate before merging — version-coordinate changes
+      should not cause CI to fail.
+
+---
+
+## Cross-repo version consistency (for SDKs with interdependencies)
+
+When SDK A depends on SDK B's published version, ensure CI configurations
+stay in sync:
+
+- [ ] If A's lockfile pins "SDK B @ vX.Y.Z" (e.g., identity-node depends
+      on ids-node @ 0.3.0), then:
+  - **During development:** B's main must be at vX.Y.Z or forward of it.
+    If B is at 0.2.0 and A pins 0.3.0, sibling-consumption CI fails.
+  - **After B's release:** Confirm A's version pin matches B's actual
+    released version (registry truth, via `npm view` / `pip index` / etc.)
+    before declaring A's release ready.
+
+- [ ] For multi-repo CI (e.g., spec conformance that consumes all SDKs),
+      verify version pins in CI config match the currently-released versions
+      of the sibling repos. If you just tagged B at 0.3.0, spec's CI should
+      pin B to `@v0.3.0` (or use a sibling-checkout pattern and main, which
+      must be bumped per Post-tag hygiene above).
 
 ---
 
