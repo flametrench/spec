@@ -97,7 +97,7 @@ Numbered from outside-in:
 
 ### Timing-equalization residual (decoy verify)
 
-Both `verifyPassword` (password credential) and `verifyPatToken` (PAT secret) run a fixed dummy Argon2id verify on the row-miss path so that "row missing" and "wrong secret/password" take the same wall time — the constant-time-verify control, covering the missing-row and the structurally-valid-but-non-UUIDv7 id paths (security-audit-v0.3 H2). Every SDK MUST use the pinned dummy PHC string (above) so the decoy's verify time matches a real floor-param verify.
+Both `verifyPassword` (password credential) and `verifyPatToken` (PAT secret) run a fixed dummy Argon2id verify on the row-miss path so that "row missing" and "wrong secret/password" take the same wall time — the constant-time-verify control, covering the row-miss path (and, for `verifyPatToken` specifically, the structurally-valid-but-non-UUIDv7 id path, which likewise skips the real verify) (security-audit-v0.3 H2). Every SDK MUST use the pinned dummy PHC string (above) so the decoy's verify time matches a real floor-param verify.
 
 This equalization carries a **documented residual, accepted for v0.3.** It is exact only while the *stored* hash uses the floor params (`m=19456, t=2, p=1`) — the same params as the pinned dummy hash. An adopter that migrates in an **above-floor** hash (higher memory/time, e.g. after a hardening upgrade) makes the real verify slower than the floor-param decoy, so "row present" becomes measurably slower than "row missing" and a coarser timing oracle re-emerges. This is acceptable for v0.3 — the floor is the spec default and the cross-SDK conformance target — but it is a known limitation, not a guarantee.
 
