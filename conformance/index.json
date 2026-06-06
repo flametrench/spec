@@ -197,6 +197,13 @@
       "operation": "write",
       "conformance_level": "MUST",
       "runnable_today": false
+    },
+    {
+      "path": "fixtures/notifications/lifecycle-shape.json",
+      "capability": "notifications",
+      "operation": "create_notification",
+      "conformance_level": "MUST",
+      "runnable_today": false
     }
   ]
 }
