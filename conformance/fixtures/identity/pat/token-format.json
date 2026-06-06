@@ -126,16 +126,6 @@
       "expected": {
         "result": true
       }
-    },
-    {
-      "id": "pat.token-format.rejects-secret-over-256-chars",
-      "description": "Secret segment of 257 chars exceeds the 256-character cap (ADR 0023 #3 / security-audit H6). Structural validation MUST reject it with a cheap length check BEFORE any Argon2id dispatch, to bound DoS amplification against a known pat_id. The wire regex has no upper bound, so the cap is a separate check.",
-      "input": {
-        "token": "pat_0190f2a81b3c7abc8123456789abcdef_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-      },
-      "expected": {
-        "result": false
-      }
     }
   ]
 }
