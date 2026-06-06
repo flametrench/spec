@@ -87,7 +87,7 @@ Access decisions reuse `authz.check()` (ADR 0001) on the file as object:
 | `updateFileMetadata` | Mutate the mutable subset (`name`, `status`); emits `aud`. |
 | `deleteFileMetadata` | Transition to `status: "deleted"` (soft); emits `aud`. |
 
-`content_type`, `owner_usr_id`, and `scope` are immutable after create. `size_bytes`, `checksum`, and `storage_ref` are immutable **once set** (at create for a directly-`active` file, or at the `pending → active` transition). A changed file's bytes are a new `file_`.
+`content_type`, `owner_usr_id`, and `scope` are immutable after create. `size_bytes`, `checksum`, and `storage_ref` are immutable **once set** (at create for a directly-`active` file, or at the `pending → active` transition). A changed file's bytes are a new `file_`. The `pending → active` transition is performed by `updateFileMetadata`, which at that transition accepts `size_bytes`, `checksum`, and `storage_ref` as a **one-time set** (alongside `status: "active"`) — in addition to the general mutable subset (`name`, `status`); once set they are immutable per the above.
 
 ### Audit emission
 
