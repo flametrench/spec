@@ -220,6 +220,41 @@
           }
         }
       ]
+    },
+    {
+      "id": "write.pending_outcome_long_running_op",
+      "description": "The 4th `outcome` enum value: `pending` — a long-running/asynchronous operation that has started but is not yet resolved (ADR 0019). A terminal event (`success`/`failure`) is expected later; correlation is carried in `metadata`/`context`. Asserts the `pending` value round-trips. This event is NOT terminal — its presence does not imply the operation completed.",
+      "users": ["actor"],
+      "steps": [
+        {
+          "op": "write",
+          "input": {
+            "occurred_at": "2026-06-05T14:00:00.000Z",
+            "actor_usr_id": "{actor}",
+            "auth": { "kind": "session", "session_id": "ses_0190f2a81b3c7abc8123000000000009" },
+            "action": "data.import.started",
+            "target": { "kind": "job", "id": "import-job-7" },
+            "scope": { "kind": "org", "id": "org_0190f2a81b3c7abc8123000000000004" },
+            "outcome": "pending",
+            "metadata": { "correlation_id": "import-job-7" }
+          },
+          "captures": { "aud_id": "id" }
+        },
+        {
+          "op": "get",
+          "input": { "id": "{aud_id}" },
+          "expected": {
+            "result": {
+              "id": "{aud_id}",
+              "actor_usr_id": "{actor}",
+              "action": "data.import.started",
+              "target": { "kind": "job", "id": "import-job-7" },
+              "outcome": "pending",
+              "metadata": { "correlation_id": "import-job-7" }
+            }
+          }
+        }
+      ]
     }
   ]
 }
