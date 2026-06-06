@@ -176,7 +176,7 @@
       "capability": "identity",
       "operation": "verify_pat_token",
       "conformance_level": "MUST",
-      "runnable_today": false
+      "runnable_today": true
     },
     {
       "path": "fixtures/identity/pat/bearer-prefix-routing.json",
