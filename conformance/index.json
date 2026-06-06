@@ -172,10 +172,24 @@
       "conformance_level": "MUST"
     },
     {
+      "path": "fixtures/identity/pat/structural-format-only.json",
+      "capability": "identity",
+      "operation": "verify_pat_token",
+      "conformance_level": "MUST",
+      "runnable_today": false
+    },
+    {
       "path": "fixtures/identity/pat/bearer-prefix-routing.json",
       "capability": "identity",
       "operation": "resolve_bearer",
       "conformance_level": "MUST"
+    },
+    {
+      "path": "fixtures/authorization/rewrite-rules/depth-limit-exceeded.json",
+      "capability": "authorization",
+      "operation": "check",
+      "conformance_level": "MUST",
+      "runnable_today": true
     }
   ]
 }
