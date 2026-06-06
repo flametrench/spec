@@ -197,6 +197,13 @@
       "operation": "write",
       "conformance_level": "MUST",
       "runnable_today": false
+    },
+    {
+      "path": "fixtures/file-metadata/lifecycle-shape.json",
+      "capability": "file-metadata",
+      "operation": "create_file_metadata",
+      "conformance_level": "MUST",
+      "runnable_today": false
     }
   ]
 }
