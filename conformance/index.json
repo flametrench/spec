@@ -70,6 +70,13 @@
       "conformance_level": "MUST"
     },
     {
+      "path": "fixtures/tenancy/list-orgs.json",
+      "capability": "tenancy",
+      "operation": "list_orgs",
+      "conformance_level": "MUST",
+      "runnable_today": false
+    },
+    {
       "path": "fixtures/tenancy/change-role.json",
       "capability": "tenancy",
       "operation": "change_role",
