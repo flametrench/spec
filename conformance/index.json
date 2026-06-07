@@ -74,7 +74,7 @@
       "capability": "tenancy",
       "operation": "list_orgs",
       "conformance_level": "MUST",
-      "runnable_today": false
+      "runnable_today": true
     },
     {
       "path": "fixtures/tenancy/change-role.json",
