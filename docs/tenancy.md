@@ -40,6 +40,7 @@ Tri-state, matching users:
 - `getOrg(org_id) → org`.
 - `updateOrg(org_id, *, name?, slug?) → org` — partial update of v0.2 metadata fields. An omitted parameter means "don't change"; an explicit null means "set to null." Slug uniqueness violations raise `OrgSlugConflictError`. Updating a revoked org raises `AlreadyTerminalError`.
 - `suspendOrg(org_id)`, `reinstateOrg(org_id)`, `revokeOrg(org_id)`.
+- `listOrgs(*, cursor?, limit = 50, query?, status?) → Page<Organization>` — paginated cross-org enumeration (ADR 0025). `query` is a case-insensitive substring over `name`/`slug`; `status` filters `active|suspended|revoked` (omitted = all). Ordered by `id` ASC. **This is the one cross-tenant read in tenancy — the adopter MUST gate the call site to an admin/system caller** (a missing gate is a cross-tenant org-enumeration leak); server-side callers with no subject (e.g. a per-org background fan-out) are inherently system-level and satisfy the bar but MUST NOT be exposed on a tenant-scoped route.
 
 ## Memberships
 
