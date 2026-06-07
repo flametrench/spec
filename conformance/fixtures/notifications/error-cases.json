@@ -5,7 +5,7 @@
   "operation": "create_notification",
   "conformance_level": "MUST",
   "spec_section": "decisions/0022-notify-primitive.md#errors-normative",
-  "description": "Notify negative vectors against ratified ADR 0022 \u00a7Errors (Option-2: SDK-enforced recipient-scoping \u2014 per-notification ops take the authenticated `recipient_usr_id`). Input-value violations raise `InvalidFormatError` (field-scoped \u2014 field named per test id/description, asserted as the error TYPE per corpus convention, cf. authorization/format.json); state-machine violations (transition out of terminal `dismissed`) raise `PreconditionError`; and the **existence-before-state precedence** case asserts that an op on a *foreign* (or non-existent) notification resolves to the **same not-found error** BEFORE any `PreconditionError` \u2014 even when the foreign notification is already `dismissed` (so not-found wins, never leaking its existence+state). The pure cross-recipient IDOR / count-non-disclosure vector is FT Spec's sibling fixture (recipient-scope.json). `runnable_today:false` (flips with the positives when 5/5 implement Option-2). ajv-validated.",
+  "description": "Notify negative vectors against ratified ADR 0022 \u00a7Errors (Option-2: SDK-enforced recipient-scoping \u2014 per-notification ops take the authenticated `recipient_usr_id`). Scope: **own-notification** input-value and state-machine negatives only. Input-value violations raise `InvalidFormatError` (field-scoped \u2014 field named per test id/description, asserted as the error TYPE per corpus convention, cf. authorization/format.json); a transition out of terminal `dismissed` on the caller's OWN notification raises `PreconditionError`. The **recipient-scope / existence non-disclosure** vectors (cross-recipient `get`/op \u2192 the same `NotFoundError`, foreign-vs-nonexistent indistinguishability, and the existence-before-state precedence case) live in FT Spec's `recipient-scope.json` (#61) \u2014 kept in one place per Security; not duplicated here. `runnable_today:false` (flips with the positives when 5/5 implement Option-2). ajv-validated.",
   "tests": [
     {
       "id": "reject.type_invalid_chars",
@@ -230,49 +230,6 @@
           },
           "expected": {
             "error": "PreconditionError"
-          }
-        }
-      ]
-    },
-    {
-      "id": "precedence.foreign_dismissed_not_found_wins",
-      "description": "Existence-before-state precedence (#59): `dismiss` by a DIFFERENT recipient on a notification that exists but is owned by someone else AND is already `dismissed` MUST raise the not-found error (existence/ownership resolves first), NOT the terminal-state `PreconditionError` \u2014 otherwise it would leak both the notification's existence and its state.",
-      "users": [
-        "owner",
-        "other"
-      ],
-      "steps": [
-        {
-          "op": "create_notification",
-          "input": {
-            "scope": "org_0190f2a81b3c7abc8123000000000004",
-            "recipient_usr_id": "{owner}",
-            "type": "comment.mention",
-            "subject": {
-              "kind": "doc",
-              "id": "doc_2f9c1a00000000000000000000000001"
-            },
-            "data": {}
-          },
-          "captures": {
-            "not_id": "id"
-          }
-        },
-        {
-          "op": "dismiss",
-          "input": {
-            "recipient_usr_id": "{owner}",
-            "id": "{not_id}"
-          }
-        },
-        {
-          "op": "dismiss",
-          "input": {
-            "recipient_usr_id": "{other}",
-            "id": "{not_id}"
-          },
-          "expected": {
-            "error": "NotFoundError"
           }
         }
       ]
