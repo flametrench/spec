@@ -213,6 +213,13 @@
       "runnable_today": false
     },
     {
+      "path": "fixtures/notifications/recipient-scope.json",
+      "capability": "notifications",
+      "operation": "get_notification",
+      "conformance_level": "MUST",
+      "runnable_today": false
+    },
+    {
       "path": "fixtures/flags/assign-bucket.json",
       "capability": "flags",
       "operation": "assign_bucket",
