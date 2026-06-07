@@ -1,7 +1,7 @@
 # ADR: Passkey login-credential assertion verification (`verifyPasskeyAssertion`)
 
 > **DRAFT — number-less per `decisions/README.md`.** Assign the next free ADR number at PR-open time. Target: next identity wave (post-v0.4-publish). Status on merge: **Proposed** (normative once the targeted version releases).
-> **Filed by:** SiteSource Admin (SDK-first pattern, cross-team request via PM). **Reviewers required:** Flametrench Security (WebAuthn/replay-sensitive), Flametrench QA (conformance vector).
+> **Filed by:** SiteSource Admin (SDK-first pattern, cross-team request via PM). **Reviewers:** Flametrench Security — **conditional sign-off received (2026-06-07), rulings folded below**; Flametrench QA (conformance vector) at PR-open.
 
 ## Status
 
@@ -17,54 +17,73 @@ The gap that motivates this ADR: there is no SDK method to verify a fresh WebAut
 
 ## Decision
 
-Add an `IdentityStore` operation:
+Add an `IdentityStore` operation, **owner-scoped** (the authenticated `usrId` is a parameter, mirroring the notify Option-2 ruling [ADR 0022] — secure-by-default, conformance-testable, and it makes the cross-user existence differential moot):
 
 ```
-verifyPasskeyAssertion(credId, assertion, challenge) → bool
+verifyPasskeyAssertion(usrId, credId, assertion, challenge) → bool
 ```
 
 **Semantics:**
-1. Load the `cred_` by `credId`. It MUST be `type = passkey` and `status = active`; otherwise see Errors.
-2. Run the existing `webauthn_verify_assertion` primitive (ADR 0010) against the credential's `passkey_public_key`, dispatching on its registration-time COSE `alg`, validating the assertion's RP ID against `passkey_rp_id`, the challenge against `challenge`, and the user-verified flag.
-3. **Sign-count monotonicity / clone detection:** the assertion's authenticator sign count MUST be **strictly greater than** the stored `passkey_sign_count` (when the authenticator uses a non-zero counter). On success, persist the new `passkey_sign_count` (monotonic bump) in the same transaction as the boolean result. A non-increasing counter on a counter-using authenticator is a **clone/replay signal** → return `false`, do not bump. (Mirrors the verifyMfa WebAuthn counter rule so the two assertion paths cannot diverge.)
-4. **Fail-closed, no oracle:** any cryptographic/assertion failure — bad signature, RP-ID mismatch, challenge mismatch, missing user-verified flag, counter regression — returns `false`. The boolean MUST NOT distinguish *which* check failed (no verification oracle), exactly as the existing assertion path is fail-closed.
+1. Load the `cred_` by `credId`. It MUST belong to `usrId` (`cred.usr_id == usrId`), be `type = passkey`, and `status = active`. A credential that does not exist **or is not owned by `usrId`** returns the same `NotFoundError` (non-disclosure — a caller cannot probe other users' credential ids; see Errors).
+2. Run the existing `webauthn_verify_assertion` primitive ([ADR 0010](./0010-webauthn-rs256-eddsa.md)) against the credential's `passkey_public_key`, dispatching on its registration-time COSE `alg`, validating the assertion's RP ID against `passkey_rp_id`, the user-verified flag, and that the assertion was signed over `challenge`.
+3. **Sign-count monotonicity / clone detection — via atomic compare-and-swap (CAS), NOT read-then-write.** On a successful crypto verify, the counter check and bump MUST be a single atomic CAS:
+   ```sql
+   UPDATE credential
+      SET passkey_sign_count = :asserted
+    WHERE id = :credId AND passkey_sign_count < :asserted
+   ```
+   then branch on rows-affected: **1 row → `true`**; **0 rows → `false`** (counter did not advance: a clone/replay signal, OR a concurrent submission of the same assertion already advanced it). A read-then-write here is a **TOCTOU replay hole** — two concurrent submissions of the *same* valid assertion both read `stored = N`, both see `asserted > N`, both succeed — same race class as the audit H3 `last_used_at` finding. Atomicity is **normative**. For **counter-less authenticators** (always report sign count 0, permitted by WebAuthn): verify-only, no bump, identical to the `verifyMfa` path — replay-safety for these rests entirely on challenge single-use (see Challenge lifecycle).
+4. **Fail-closed, no oracle.** Any cryptographic/assertion/counter failure — bad signature, RP-ID mismatch, challenge mismatch, missing user-verified flag, counter non-advance — returns `false`. The boolean MUST NOT distinguish *which* check failed (no verification oracle). In particular, the ADR 0010 primitive's internal `WebAuthn*` exceptions (e.g. `WebAuthnUnsupportedKeyError`, malformed authenticator data) MUST be **caught and collapsed into `false`** — surfacing them here would itself be the which-check oracle (see Errors). Wall-clock timing of the failing check is **adopter-hardening, not a contract MUST** (consistent with [ADR 0019] / notify #59) — the contract kills the *error-code* oracle, which is the load-bearing part.
 
-**This does NOT mint a new credential, session, or factor**, and does NOT itself perform the rotation — it is a pure verification predicate the adopter chains before `rotatePasskey()` (and MAY use to stamp step-up freshness; see Open Questions).
+**This does NOT mint a credential, session, or factor**, does NOT perform the rotation, and does NOT stamp MFA freshness — it is a pure verification predicate the adopter chains before `rotatePasskey()`.
 
 ### Why a new method rather than overloading `verifyCredential` / `verifyMfa`
-- `verifyCredential` returns `usr_id | null` (login: *who* authenticated, by `(type,identifier)`); `verifyPasskeyAssertion` is keyed by a **specific `credId`** the caller already holds and returns **bool** (re-auth: *did this exact enrolled passkey just sign this challenge*). Different question, different shape.
-- `verifyMfa` operates on `mfa_` factors keyed by `usrId`. Passkey **login credentials** are `cred_` entities — a distinct lifecycle ([ADR 0005](./0005-revoke-and-re-add.md) rotation, `(type,identifier)` uniqueness). Reusing the verifier primitive while keeping the entity boundary intact is the `docs/identity.md` "factors are not credentials" invariant.
+- `verifyCredential` returns `usr_id | null` (login: *who* authenticated, by `(type,identifier)`); `verifyPasskeyAssertion` is keyed by `(usrId, credId)` the caller already holds and returns **bool** (re-auth: *did this user's exact enrolled passkey just sign this challenge*). Different question, different shape.
+- `verifyMfa` operates on `mfa_` factors. Passkey **login credentials** are `cred_` entities with a distinct lifecycle ([ADR 0005](./0005-revoke-and-re-add.md) rotation, `(type,identifier)` uniqueness). Reusing the verifier primitive while keeping the entity boundary intact upholds the `docs/identity.md` "factors are not credentials" invariant.
+
+## Challenge lifecycle (the primary replay defense — normative adopter contract)
+
+`verifyPasskeyAssertion` takes `challenge` as a parameter and only verifies the assertion was signed over it. It is **stateless with respect to challenge issuance** — it does **not** generate, store, single-use, or expire the challenge, and therefore **cannot enforce single-use itself.** Replay-safety therefore rests on the adopter, and this ADR makes that a **loud, normative adopter-MUST.** The `challenge` passed in MUST be:
+- **server-generated** (never client-supplied),
+- **cryptographically random, ≥16 bytes** (WebAuthn L2 §13.1),
+- **single-use** — consumed/invalidated the moment it is handed to `verifyPasskeyAssertion`; a given challenge MUST NOT be accepted for a second verification,
+- **time-bound** (short TTL).
+
+**Threat-model note:** for **counter-less authenticators** the sign-count backstop does nothing, so **challenge single-use is the *only* replay defense** — an adopter who reuses or fails to invalidate a challenge has a replay hole the SDK cannot close. The ADR states this explicitly so adopters cannot read the sign-count rule as sufficient.
 
 ## Errors
 
-Open for Security/QA confirmation (see Open Questions) — proposed:
-- `credId` malformed → `InvalidFormatError(field="credId")`.
-- `assertion` / `challenge` structurally malformed (not the crypto check — structural decode only) → `InvalidFormatError(field=...)`. The crypto/assertion verdict is the boolean, never an exception (fail-closed, no oracle).
-- `credId` not found → `NotFoundError` (generic; same non-disclosure posture as `getUser`).
-- Credential exists but is not an active passkey (`type != passkey` or `status != active`) → `PreconditionError`.
-
-**Cross-cutting taxonomy question:** the v0.2 WebAuthn layer uses primitive-specific classes (e.g. `WebAuthnUnsupportedKeyError(reason=...)`, ADR 0010), whereas the v0.4 taxonomy (ADRs 0019–0022) is uniform `InvalidFormatError` / `PreconditionError` with **no** primitive-specific classes. This method straddles both. The draft proposes the uniform classes for the *new* surface (structural input + state), with the assertion verdict staying a fail-closed boolean (so no WebAuthn-specific error is reachable on the hot path). **Security/QA to confirm** we don't want a `WebAuthn*`-family error here for parity with `verifyMfa`'s surface.
+Resolved with Security — **uniform taxonomy is mandatory here (not just consistent):** any `WebAuthn*`-family error on the verdict path would itself be the no-oracle violation, so the only errors are structural/state; the crypto verdict is always the fail-closed bool.
+- `usrId` / `credId` malformed → `InvalidFormatError(field=…)`.
+- `assertion` / `challenge` **structurally** malformed (decode only, not the crypto check) → `InvalidFormatError(field=…)`.
+- `credId` not found **or not owned by `usrId`** → `NotFoundError` (single indistinguishable response — no cross-user existence/status probe; same posture as `getUser` and the notify Option-2 non-disclosure).
+- Credential is owned + exists but is not an active passkey (`type != passkey` or `status != active`, incl. `suspended`) → `PreconditionError`. (Active-only re-auth, confirmed.)
+- The ADR 0010 primitive's `WebAuthn*` exceptions are **wrapped/collapsed into the `false` verdict**, never surfaced.
 
 ## Conformance
 
-A `fixtures/identity/passkey/verify-assertion.json` vector (synthetic assertions against known public keys, same approach as the existing WebAuthn MFA fixtures, `docs/identity.md#cross-sdk-parity-contract`). Minimum cases:
-- **valid** assertion against an enrolled passkey credential → `true`, `passkey_sign_count` bumped to the asserted counter.
-- **counter regression** (asserted ≤ stored, non-zero authenticator) → `false`, counter **unchanged** (clone-detection).
-- **RP-ID mismatch** / **challenge mismatch** / **missing UV flag** → each `false` (and indistinguishable — no oracle).
-- **wrong-type / revoked credential** → `PreconditionError`; **unknown credId** → `NotFoundError`; **malformed credId** → `InvalidFormatError`.
-- one vector per registered COSE `alg` (ES256/RS256/EdDSA) to prove the dispatch reuse.
+A `fixtures/identity/passkey/verify-assertion.json` vector (synthetic assertions against known public keys, same approach as the WebAuthn MFA fixtures, `docs/identity.md#cross-sdk-parity-contract`). Minimum cases:
+- **valid** assertion against the user's enrolled passkey → `true`, `passkey_sign_count` advanced to the asserted counter.
+- **counter regression / equal** (asserted ≤ stored, counter-using authenticator) → `false`, counter **unchanged** (clone-detection; the CAS yields 0 rows).
+- **RP-ID mismatch** / **challenge mismatch** / **missing UV flag** → each `false`, mutually indistinguishable (no oracle).
+- **non-owned `credId`** (valid credential of *another* user) → `NotFoundError`, **byte-identical to unknown-credId** (owner-scoping non-disclosure).
+- **wrong-type / revoked / suspended** owned credential → `PreconditionError`; **malformed usrId/credId** → `InvalidFormatError`.
+- one valid vector per registered COSE `alg` (ES256/RS256/EdDSA) to prove the dispatch reuse.
 
-`runnable_today: false` until 5/5 SDKs implement (the per-primitive flip discipline; flips to enforcing per the re-vendor rule).
+(Challenge single-use is an *adopter*-side property — not directly SDK-conformance-testable — so the fixtures assert crypto + owner-scope + counter/CAS semantics; the challenge-lifecycle MUSTs live in the normative prose + adopter docs.) `runnable_today: false` until 5/5 SDKs implement (per-primitive flip discipline; flips per the re-vendor rule).
 
-## Open questions (for Security + PM)
+## Security rulings folded (2026-06-07 conditional sign-off)
 
-1. **Step-up freshness integration.** Should a successful `verifyPasskeyAssertion` be allowed to stamp `session.mfa_verified_at` (the `docs/identity.md#sessions-and-mfa-freshness` step-up window), or is it strictly a standalone predicate the adopter wires? Leaning standalone (it verifies a *credential*, not an MFA *factor*) — but the rotation-re-auth use case is morally a step-up. **Security's call.**
-2. **Error taxonomy** — uniform vs WebAuthn-family (above).
-3. **Scope of "active".** Should re-auth be permitted against a `suspended` passkey (e.g. mid-reset)? Draft says no (active-only). Confirm.
-4. **Counter-less authenticators.** For authenticators that always report sign count 0 (allowed by WebAuthn), the strict-greater rule is skipped (verify-only, no bump) — confirm this matches the existing verifyMfa behavior so the two paths stay identical.
+1. **Atomic CAS** for the counter check+bump (replay TOCTOU) — pinned normative (Decision §3).
+2. **No-oracle bool**, `WebAuthn*` collapsed, timing = adopter-hardening — folded (Decision §4, Errors).
+3. **Step-up freshness: STANDALONE** — `verifyPasskeyAssertion` MUST NOT auto-stamp `session.mfa_verified_at`. It verifies a *credential*, not an MFA *factor*; auto-stamping would let a passkey re-auth silently satisfy an MFA-freshness gate for a user who also has a separate factor (a privilege/semantics leak). Whether a passkey re-auth counts as step-up is **adopter policy** — the adopter stamps `mfa_verified_at` itself on a `true` result if its policy says so. The two are distinct; conflating them is the adopter's explicit choice. (Folded as the no-stamp rule above.)
+4. **Uniform error taxonomy required** (not optional) — folded (Errors).
+5. **Active-only** — folded (Errors, `PreconditionError`).
+6. **Challenge lifecycle** — the real replay surface; normative adopter-MUST added (dedicated section), with the counter-less reliance threat note.
+7. **Owner-scoping** — adopted the `usrId` param (Security's lean; secure-by-default, conformance-testable, consistent with notify Option-2) over a credId-must-belong-to-caller adopter-MUST. Signature gains `usrId`; non-owned → uniform `NotFoundError`. Note for PM: this refines Admin's original `(credId, assertion, challenge)` sketch to `(usrId, credId, assertion, challenge)`.
 
 ## Consequences
 
 - One new `IdentityStore` method, reusing the existing verifier primitive — a mini-primitive (single method, smaller than a v0.4 cap), fans out to all 5 SDKs after the ADR locks.
-- Closes the passkey-only re-auth gap (admin#89's takeover surface) without adopters touching WebAuthn crypto.
-- Keeps the `cred_` vs `mfa_` boundary intact; no schema change (the passkey credential already stores pubkey + counter + RP ID).
+- Closes the passkey-only re-auth gap (admin#89's takeover surface) without adopters touching WebAuthn crypto; defense-in-depth via owner-scoping + non-disclosure; replay closed by atomic-CAS + the normative challenge contract.
+- Keeps the `cred_` vs `mfa_` boundary intact; **no schema change** (the passkey credential already stores pubkey + counter + RP ID).
