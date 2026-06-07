@@ -1,0 +1,238 @@
+{
+  "$schema": "../../fixture.schema.json",
+  "spec_version": "0.4.0",
+  "capability": "notifications",
+  "operation": "create_notification",
+  "conformance_level": "MUST",
+  "spec_section": "decisions/0022-notify-primitive.md#errors-normative",
+  "description": "Notify negative vectors against ratified ADR 0022 \u00a7Errors (Option-2: SDK-enforced recipient-scoping \u2014 per-notification ops take the authenticated `recipient_usr_id`). Scope: **own-notification** input-value and state-machine negatives only. Input-value violations raise `InvalidFormatError` (field-scoped \u2014 field named per test id/description, asserted as the error TYPE per corpus convention, cf. authorization/format.json); a transition out of terminal `dismissed` on the caller's OWN notification raises `PreconditionError`. The **recipient-scope / existence non-disclosure** vectors (cross-recipient `get`/op \u2192 the same `NotFoundError`, foreign-vs-nonexistent indistinguishability, and the existence-before-state precedence case) live in FT Spec's `recipient-scope.json` (#61) \u2014 kept in one place per Security; not duplicated here. `runnable_today:false` (flips with the positives when 5/5 implement Option-2). ajv-validated.",
+  "tests": [
+    {
+      "id": "reject.type_invalid_chars",
+      "description": "`type` outside `^[a-z0-9._-]{1,64}$` (uppercase/space/punctuation) \u2192 InvalidFormatError, field `type`.",
+      "input": {
+        "scope": "org_0190f2a81b3c7abc8123000000000004",
+        "recipient_usr_id": "usr_0190f2a81b3c7abc8123000000000002",
+        "type": "Comment Mention!",
+        "subject": {
+          "kind": "doc",
+          "id": "doc_2f9c1a00000000000000000000000001"
+        },
+        "data": {}
+      },
+      "expected": {
+        "error": "InvalidFormatError"
+      }
+    },
+    {
+      "id": "reject.type_too_long",
+      "description": "`type` longer than 64 chars \u2192 InvalidFormatError, field `type`.",
+      "input": {
+        "scope": "org_0190f2a81b3c7abc8123000000000004",
+        "recipient_usr_id": "usr_0190f2a81b3c7abc8123000000000002",
+        "type": "comment.mention.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject": {
+          "kind": "doc",
+          "id": "doc_2f9c1a00000000000000000000000001"
+        },
+        "data": {}
+      },
+      "expected": {
+        "error": "InvalidFormatError"
+      }
+    },
+    {
+      "id": "reject.data_not_object",
+      "description": "`data` is not a JSON object (here a string) \u2192 InvalidFormatError, field `data`. (The >16 KB `data` case needs a payload-generation mechanism the fixture format lacks \u2014 deferred, same as the audit 64 KB cap.)",
+      "input": {
+        "scope": "org_0190f2a81b3c7abc8123000000000004",
+        "recipient_usr_id": "usr_0190f2a81b3c7abc8123000000000002",
+        "type": "comment.mention",
+        "subject": {
+          "kind": "doc",
+          "id": "doc_2f9c1a00000000000000000000000001"
+        },
+        "data": "not-an-object"
+      },
+      "expected": {
+        "error": "InvalidFormatError"
+      }
+    },
+    {
+      "id": "reject.recipient_usr_id_malformed",
+      "description": "`recipient_usr_id` not a valid `usr_<32hex>` (wrong prefix / shape) \u2192 InvalidFormatError, field `recipient_usr_id`.",
+      "input": {
+        "scope": "org_0190f2a81b3c7abc8123000000000004",
+        "recipient_usr_id": "user-42",
+        "type": "comment.mention",
+        "subject": {
+          "kind": "doc",
+          "id": "doc_2f9c1a00000000000000000000000001"
+        },
+        "data": {}
+      },
+      "expected": {
+        "error": "InvalidFormatError"
+      }
+    },
+    {
+      "id": "reject.scope_malformed",
+      "description": "`scope` not a valid `org_<32hex>` \u2192 InvalidFormatError, field `scope`.",
+      "input": {
+        "scope": "org_not_hex",
+        "recipient_usr_id": "usr_0190f2a81b3c7abc8123000000000002",
+        "type": "comment.mention",
+        "subject": {
+          "kind": "doc",
+          "id": "doc_2f9c1a00000000000000000000000001"
+        },
+        "data": {}
+      },
+      "expected": {
+        "error": "InvalidFormatError"
+      }
+    },
+    {
+      "id": "reject.subject_missing_kind",
+      "description": "`subject` malformed \u2014 missing `kind` \u2192 InvalidFormatError, field `subject`.",
+      "input": {
+        "scope": "org_0190f2a81b3c7abc8123000000000004",
+        "recipient_usr_id": "usr_0190f2a81b3c7abc8123000000000002",
+        "type": "comment.mention",
+        "subject": {
+          "id": "doc_2f9c1a00000000000000000000000001"
+        },
+        "data": {}
+      },
+      "expected": {
+        "error": "InvalidFormatError"
+      }
+    },
+    {
+      "id": "dismissed.mark_read_rejected",
+      "description": "`dismissed` is terminal \u2014 `markRead` on an already-dismissed notification is a transition out of terminal state \u2192 PreconditionError (the notification exists and is the caller's, so existence/ownership passes and the state-machine rule fires).",
+      "users": [
+        "recipient"
+      ],
+      "steps": [
+        {
+          "op": "create_notification",
+          "input": {
+            "scope": "org_0190f2a81b3c7abc8123000000000004",
+            "recipient_usr_id": "{recipient}",
+            "type": "comment.mention",
+            "subject": {
+              "kind": "doc",
+              "id": "doc_2f9c1a00000000000000000000000001"
+            },
+            "data": {}
+          },
+          "captures": {
+            "not_id": "id"
+          }
+        },
+        {
+          "op": "dismiss",
+          "input": {
+            "recipient_usr_id": "{recipient}",
+            "id": "{not_id}"
+          }
+        },
+        {
+          "op": "mark_read",
+          "input": {
+            "recipient_usr_id": "{recipient}",
+            "id": "{not_id}"
+          },
+          "expected": {
+            "error": "PreconditionError"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dismissed.mark_unread_rejected",
+      "description": "`markUnread` on an already-dismissed notification \u2192 PreconditionError (transition out of terminal `dismissed`).",
+      "users": [
+        "recipient"
+      ],
+      "steps": [
+        {
+          "op": "create_notification",
+          "input": {
+            "scope": "org_0190f2a81b3c7abc8123000000000004",
+            "recipient_usr_id": "{recipient}",
+            "type": "comment.mention",
+            "subject": {
+              "kind": "doc",
+              "id": "doc_2f9c1a00000000000000000000000001"
+            },
+            "data": {}
+          },
+          "captures": {
+            "not_id": "id"
+          }
+        },
+        {
+          "op": "dismiss",
+          "input": {
+            "recipient_usr_id": "{recipient}",
+            "id": "{not_id}"
+          }
+        },
+        {
+          "op": "mark_unread",
+          "input": {
+            "recipient_usr_id": "{recipient}",
+            "id": "{not_id}"
+          },
+          "expected": {
+            "error": "PreconditionError"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dismissed.dismiss_again_rejected",
+      "description": "`dismiss` on an already-dismissed notification (the caller's own) \u2192 PreconditionError. (For a FOREIGN/non-existent already-dismissed notification, not-found takes precedence over this PreconditionError \u2014 that existence-before-state vector is in the deferred recipient-scope follow-on.)",
+      "users": [
+        "recipient"
+      ],
+      "steps": [
+        {
+          "op": "create_notification",
+          "input": {
+            "scope": "org_0190f2a81b3c7abc8123000000000004",
+            "recipient_usr_id": "{recipient}",
+            "type": "comment.mention",
+            "subject": {
+              "kind": "doc",
+              "id": "doc_2f9c1a00000000000000000000000001"
+            },
+            "data": {}
+          },
+          "captures": {
+            "not_id": "id"
+          }
+        },
+        {
+          "op": "dismiss",
+          "input": {
+            "recipient_usr_id": "{recipient}",
+            "id": "{not_id}"
+          }
+        },
+        {
+          "op": "dismiss",
+          "input": {
+            "recipient_usr_id": "{recipient}",
+            "id": "{not_id}"
+          },
+          "expected": {
+            "error": "PreconditionError"
+          }
+        }
+      ]
+    }
+  ]
+}
