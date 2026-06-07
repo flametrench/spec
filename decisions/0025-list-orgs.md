@@ -56,7 +56,7 @@ The spec does not introduce a tuple relation for "list orgs"; the gate lives at 
 
 ### Wire surface (OpenAPI)
 
-A new `GET /v1/orgs` operation lands in the v0.4 OpenAPI additions with `cursor` / `limit` / `query` / `status` query parameters and an `OrgPage` response schema mirroring the existing `MembershipPage` / `UserPage` shapes (an `OrgStatus` enum `active|suspended|revoked` accompanies it). *(Exact file placement deferred to flametrench-spec's v0.4 OpenAPI layout — see PR note.)*
+A new `GET /v1/orgs` operation lands in **`openapi/flametrench-v0.4-additions.yaml`** (the first v0.4 wire-surface addition) with `cursor` / `limit` / `query` / `status` query parameters and an `OrgPage` response schema mirroring the existing `MembershipPage` / `UserPage` shapes (an `OrgStatus` enum `active|suspended|revoked` accompanies it). This also **defines the `OrgPage` schema** that `UserPage` / `MembershipPage` descriptions already reference — a second dangling reference resolved alongside the `listOrgs` one.
 
 ## Consequences
 
