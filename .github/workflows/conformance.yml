@@ -197,13 +197,17 @@ jobs:
 
       - name: Checkout flametrench/ids-python
         # ids-python is the upstream dep for the other Python SDKs. Build it
-        # from the sibling repo's default branch — version-coordinated with the
-        # SDK under test — rather than a pinned (and stale) tag or PyPI, which
-        # is not yet published. CI must not depend on an unpublished registry.
+        # from source (PyPI is unpublished, so CI must not resolve there) and
+        # pin to the released TAG matching the SDKs' required ids version
+        # (`v0.3.0`), not the default branch — same model as the Java leg: a
+        # sibling main can lag its tag, and tag-pinning is reproducible and
+        # skew-proof. The tag-pin-consistency gate (validate-sibling-pins.mjs)
+        # verifies this ref exists. Bump in lockstep when the SDKs move.
         if: matrix.sdk != 'ids-python'
         uses: actions/checkout@v4
         with:
           repository: flametrench/ids-python
+          ref: v0.3.0
           path: _vendored/ids-python
 
       - name: Overlay live spec fixtures
