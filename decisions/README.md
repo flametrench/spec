@@ -43,6 +43,7 @@ ADRs are numbered sequentially from 0001 in the order accepted. Numbers never ch
 | [0020](./0020-file-metadata-primitive.md) | File-metadata primitive (`file`) (v0.4 — Proposed) | `file_` metadata + lifecycle, storage-agnostic (opaque `storage_ref`, no blob bytes); access via `authz.check()` on the file as an object — no parallel ACL; emits `aud`; promotes `file` in `docs/ids.md`. Filed by SiteSource |
 | [0021](./0021-flags-primitive.md) | Feature-flags primitive (`flag`) (v0.4 — Proposed) | Boolean flags + ordered targeting rules; targeting reuses `authz` `check()`/tuples (no new DSL); deterministic SHA-256 bucketing pinned for cross-SDK identity; `evaluate` hot-path/unaudited; emits `aud`; promotes `flag` in `docs/ids.md`. Filed by SiteSource |
 | [0022](./0022-notify-primitive.md) | Notifications primitive (`not`) (v0.4 — Proposed) | Per-recipient record/event primitive (NOT a delivery engine — no SMTP/SMS/push/templating/retry); lifecycle `unread ⇄ read → dismissed`; strictly recipient-scoped access; emits `aud`; promotes `not` in `docs/ids.md`. Filed by SiteSource |
+| [0023](./0023-v03-implementation-constants.md) | v0.3 implementation constants (cross-SDK parity) (Accepted) | Consolidated source-of-truth table for 7 v0.3 constants the SDK families must agree on (PAT parse / dummy-hash / secret-cap / `auth.kind` / bearer-order; rewrite bounds 8/1024; tuple regexes); cites each value's authoritative home + enforcing fixture. Surfaced by the Go reference SDK |
 
 ## Writing a new ADR
 
