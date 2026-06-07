@@ -34,6 +34,13 @@
       "conformance_level": "MUST"
     },
     {
+      "path": "fixtures/ids/registered-prefixes.json",
+      "capability": "ids",
+      "operation": "type_of",
+      "conformance_level": "MUST",
+      "runnable_today": false
+    },
+    {
       "path": "fixtures/identity/argon2id.json",
       "capability": "identity",
       "operation": "verify_password",
