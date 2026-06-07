@@ -29,6 +29,9 @@ release is correct:
 | flametrench.dev spec-vs-SDK version conflation | v0.3.0 release header in spec README stated "v0.3.0 stable" over a matrix where only spec and Go were at v0.3, while PHP/Node/Python/Java remained at v0.2.x. Readers conflated "spec is v0.3" with "all SDKs are v0.3." Clarified via accurate parity wording once all families reached v0.3. |
 | Java multi-module version skew (main-pom-behind-tag) | `ids-java` was tagged at v0.3.0 but main's `pom.xml` remained at v0.2.0. Spec conformance CI fetched the tag (v0.3.0) but sibling repos' CI fetched main and got v0.2.0. Cross-repo version assertions failed; 6 spec conformance PRs turned red. Root cause: release process did not verify post-tag that main's version coordinate matches the new tag. |
 | Cross-repo version inconsistency (sibling mismatch) | SDK A depends on "SDK B @ v0.3.0"; B's main is at v0.2.0 after tagging B at v0.3.0. CI that consumes A's main gets the dependency-on-0.3.0 lock but can only find B's v0.2.0 in source, causing resolution failures. Sibling-consumption CI (e.g., spec conformance) fails even though the tag exists. Requires explicit cross-repo version alignment checks. |
+| `@flametrench/*` 0.3.x cohort — **npm EOTP at publish** (2026-06-07) | A granular/publish npm token demanded a 2FA OTP in CI; the workflow failed at the first package (`ids@0.3.0`) with `npm error code EOTP`. Fixed by swapping `NPM_TOKEN` to a **Classic Automation token** (bypasses 2FA for CI). **Never disable account 2FA to publish** — especially mid-incident. The automation token is just as fast. |
+| `node/publish.yml` — **auth env step-scoped, not job-scoped** (2026-06-07) | `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` was indented under only the *last* publish step, so the first three package publishes ran tokenless and would 401 (if they reached that point). Fixed by moving `env:` to **job level** (commit `cd71353`). In multi-step publish workflows, registry auth must be job-level or on every step. |
+| Identity-only publish would ship **broken tarball** (2026-06-07) | `@flametrench/identity@0.3.1` depends on `@flametrench/ids` via `workspace:*` → resolves to `ids@0.3.0` in the tarball. Publishing identity alone while `ids@0.3.0` isn't on npm = unresolvable `npm install` for adopters. Must publish the **full cohort in dependency order**; a single-package selector default is unsafe when the sibling version isn't yet on the registry. Verify the publish publishes the cohort, not just the main package. |
 
 The pattern across these is the same: **"it works on my machine" or "the
 source is correct" was treated as a release proof.** Proof must be
@@ -191,6 +194,36 @@ publish:
       `@flametrench/identity@0.2.1`). Push tags after the publish
       succeeds, not before — a tagged-but-unpublished version is a
       release-process lie.
+
+### npm / Per-ecosystem specifics
+
+- [ ] **npm 2FA → Automation token (not granular/Publish token).** If the
+      publishing account has 2FA enabled, the CI token **MUST be a Classic
+      Automation token**. Granular or Publish tokens demand an OTP (code
+      `EOTP`) in CI, blocking the entire publish workflow. Do **not** disable
+      account 2FA as a workaround — especially during an incident when
+      security discipline matters most. The automation token is just as fast.
+- [ ] **Auth env must be job-level (or on every publish step).** In multi-step
+      publish workflows (e.g., `ids → identity → tenancy → authz`), the
+      registry auth env (`NODE_AUTH_TOKEN`, etc.) must be set at **job level**
+      (above all steps) or on **every** publish step individually — not just
+      the final one. Step-level scoping on only the last step leaves earlier
+      packages tokenless, causing 401s and partial publishes.
+- [ ] **Confirm cohort, not single-package default, before firing.** If you
+      have a workflow_dispatch input that selects `@flametrench/identity`
+      (the main package), verify you're running with `all` or the full
+      dependency-ordered cohort, not the single-package default. Any package
+      whose `workspace:*` resolves to a sibling version **not yet on the
+      registry** ships a broken tarball. For the identity cohort: publish in
+      order (`ids → identity → tenancy → authz`); verify each is live before
+      assuming the next succeeds.
+- [ ] **"Guarded workflow" ≠ "never published."** Don't infer a package's
+      published state from its current CI workflow guard (manual trigger vs
+      auto-trigger). Query the registry directly: `npm view <pkg> versions --json`.
+      The Node 0.2.x-on-npm exposure (a 5+ week incident) was missed because
+      the reasoning was "the workflow is guarded, so 0.2.x was never published"
+      — a local-config inference, not a registry fact. Always verify against
+      the actual published state.
 
 ---
 
