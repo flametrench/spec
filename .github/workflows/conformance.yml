@@ -52,6 +52,13 @@ jobs:
       - name: Validate index.json fixture paths exist and match their metadata
         run: node .github/scripts/validate-conformance-index.mjs
 
+      - name: Validate cross-SDK sibling tag-pins resolve to live tags
+        # Principle-7 tag-pin consistency gate: every `ref:` pin on a
+        # flametrench/<repo> dependency checkout below must point at a tag that
+        # actually exists (prevents orphaned/stale pins — the ids-java skew
+        # class). Make this a required status check on main branch protection.
+        run: node .github/scripts/validate-sibling-pins.mjs
+
   lint-openapi:
     name: Lint OpenAPI v0.1 draft
     runs-on: ubuntu-latest
