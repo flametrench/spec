@@ -70,6 +70,13 @@
       "conformance_level": "MUST"
     },
     {
+      "path": "fixtures/tenancy/list-orgs.json",
+      "capability": "tenancy",
+      "operation": "list_orgs",
+      "conformance_level": "MUST",
+      "runnable_today": true
+    },
+    {
       "path": "fixtures/tenancy/change-role.json",
       "capability": "tenancy",
       "operation": "change_role",
@@ -195,6 +202,13 @@
       "path": "fixtures/audit/write-event-shape.json",
       "capability": "audit",
       "operation": "write",
+      "conformance_level": "MUST",
+      "runnable_today": false
+    },
+    {
+      "path": "fixtures/notifications/lifecycle-shape.json",
+      "capability": "notifications",
+      "operation": "create_notification",
       "conformance_level": "MUST",
       "runnable_today": false
     },
