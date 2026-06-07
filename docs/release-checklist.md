@@ -194,22 +194,25 @@ publish:
 
 ---
 
-## Post-tag hygiene (mandatory — release-to-main synchronization)
+## Post-tag hygiene (recommended — release-to-main synchronization for maintainability)
 
-**After tagging vX.Y.Z, main's version coordinates MUST be bumped to forward-SNAPSHOT or the next minor, depending on the project's convention.** This prevents sibling repos' CI from consuming a mis-matched version (e.g., `pom.xml` at 0.2.0 while the tag is 0.3.0).
+**After tagging vX.Y.Z, main's version coordinates SHOULD be bumped to forward-SNAPSHOT or the next minor, depending on the project's convention.** This keeps the repository in a clean, maintainable state and prevents *accidental* consumption of stale main versions during manual builds or debugging.
+
+**⚠️ IMPORTANT:** This hygiene check is NOT the load-bearing gate for preventing version-skew flooding. The actual flood prevention is the **tag-pin consistency check** (documented under "Cross-repo version consistency" below). Sibling-repo CI must pin to RELEASED TAGS (`ref: vX.Y.Z`), never default-branch. As long as CI pins to tags, main's version is irrelevant.
 
 - [ ] The commit(s) that added the version bump for the tag are on `main`
       (not just on a release branch). If the tag was cut from a `release/` branch,
       you must cherry-pick the version bump back to main or rebase main to
       include it.
 - [ ] **Main's version coordinate (package.json, pom.xml, pyproject.toml, go.mod)
-      is EITHER:**
+      should be:**
   - The same version as the tag (e.g., if you tagged `v0.3.0`, main has `0.3.0` or
     `0.3.0-SNAPSHOT`), OR
   - Explicitly forward of the tag (e.g., tag `v0.3.0`, main has `0.3.1-SNAPSHOT` or `0.4.0-SNAPSHOT`).
   
-  **Never** leave main behind the tag (e.g., tag `v0.3.0` while main is `0.2.0`).
-  This breaks sibling-repo CI that depends on this repo and consumes main.
+  Leaving main behind the tag (e.g., tag `v0.3.0` while main is `0.2.0`) is not a
+  blocking issue *if* sibling CI pins to the tag, but it's poor hygiene and makes
+  local debugging confusing.
 
 - [ ] CI is green on `main` after the version bump. If CI goes red from the
       bump alone, investigate before merging — version-coordinate changes
@@ -217,24 +220,30 @@ publish:
 
 ---
 
-## Cross-repo version consistency (for SDKs with interdependencies)
+## Cross-repo version consistency (THE load-bearing gate for flood prevention)
 
-When SDK A depends on SDK B's published version, ensure CI configurations
-stay in sync:
+**All sibling pins in CI must point to RELEASED TAGS (`ref: vX.Y.Z`), never
+default-branch.** This is the structural gate that prevents version-skew
+flooding. Because multi-repo CI never reads main's version, main can be
+SNAPSHOT or stable without risk — the tag pins are what matter.
 
-- [ ] If A's lockfile pins "SDK B @ vX.Y.Z" (e.g., identity-node depends
-      on ids-node @ 0.3.0), then:
-  - **During development:** B's main must be at vX.Y.Z or forward of it.
-    If B is at 0.2.0 and A pins 0.3.0, sibling-consumption CI fails.
-  - **After B's release:** Confirm A's version pin matches B's actual
-    released version (registry truth, via `npm view` / `pip index` / etc.)
-    before declaring A's release ready.
+- [ ] **For multi-repo CI (e.g., spec conformance):** Every SDK pin must
+      point to an existing released tag:
+  - ✅ `ref: v0.3.0` (existing tag) — safe, always resolves correctly
+  - ❌ `ref: main` or default-branch (may be SNAPSHOT, may not match expectations) — unsafe, causes version mismatch
+  - ❌ `ref: v0.3.1-SNAPSHOT` (non-existent tag) — unsafe, won't resolve
 
-- [ ] For multi-repo CI (e.g., spec conformance that consumes all SDKs),
-      verify version pins in CI config match the currently-released versions
-      of the sibling repos. If you just tagged B at 0.3.0, spec's CI should
-      pin B to `@v0.3.0` (or use a sibling-checkout pattern and main, which
-      must be bumped per Post-tag hygiene above).
+- [ ] **Required CI gate:** A status check that validates every sibling `ref:`
+      in CI config points to an actual released tag:
+  - `git ls-remote --tags <repo> refs/tags/<ref>` must succeed for every pin
+  - Fails if any pin is stale, future, or non-existent
+  - This gate prevents the flood structurally: the flood cannot occur if
+    every pin is locked to a released tag
+
+- [ ] **After tagging vX.Y.Z:** Ensure all dependents either pin the new tag
+      (vX.Y.Z) before their own release, or have a released tag that pins the
+      sibling version they need. Never leave a tag that pins a non-existent
+      sibling version.
 
 ---
 
