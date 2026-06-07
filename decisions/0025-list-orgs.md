@@ -47,10 +47,15 @@ Orgs are returned ordered by `id` ASC (UUIDv7 ≈ creation-time), matching every
 
 ### Authorization
 
-`listOrgs` enumerates the **entire org table — it is the one cross-tenant read in tenancy.** Like `listUsers`/`listMembers`, the spec does not mandate authorization at the SDK layer; **the adopter MUST gate the call site to an admin/system caller.** A missing gate here is a *cross-tenant* org-enumeration leak (strictly worse than a single-tenant leak), so the gating obligation is emphasized:
+`listOrgs` enumerates the **entire org table — it is the one cross-tenant read in tenancy.** Like `listUsers`/`listMembers`, the spec does not mandate authorization at the SDK layer (the SDK cannot know the adopter's admin model); **the adopter MUST gate the call site to an admin/system caller.**
 
-- A host-application **system/sysadmin** route (e.g. an admin org-management UI gated by `check(subject, system_admin, system_<install_id>)` or equivalent) MAY call `listOrgs`. End-user / org-scoped routes MUST NOT.
-- A **server-side** caller with no request/subject (e.g. cloud ADR 0046's scheduler fan-out) is inherently system-level and satisfies the bar — but MUST NOT be reachable through any tenant-scoped surface.
+A missing gate exposes the **entire customer roster**: for every org on the install, `listOrgs` returns `id`, `status`, `name`, `slug`, and `created_at`/`updated_at`. That is not merely "which orgs exist" — it is a **searchable directory of every tenant** (the `query` filter searches `name`/`slug`), each tenant's **lifecycle state** (`status` reveals who is suspended/revoked — a churn/billing signal), and **install growth** (timestamps). Treat a missing gate as disclosure of competitively-sensitive cross-tenant data, not just an enumeration count.
+
+**Recommended gate.** Gate the call site behind an install/system-level authorization check evaluated *before* `listOrgs` is reached — canonical shape `check(subject, system_admin, system_<install_id>)` (an install-scoped admin relation). End-user / org-scoped routes MUST NOT call it. Server-side no-subject callers (scheduler fan-out, e.g. cloud ADR 0046) satisfy the bar by construction but MUST live on a surface with no tenant-request path to them.
+
+`listOrgs` is the single, explicit exception to the cross-tenant non-inference invariant of [ADR 0019 §"Denied-operation and cross-scope disclosure"](./0019-audit-primitive.md): tenant-scoped reads MUST NOT let one tenant infer another's existence; `listOrgs` is the one system-level read that may — *because* it is gated to admin/system and unreachable from any tenant-scoped surface. That gate is what keeps the two ADRs consistent.
+
+**Revoked orgs remain enumerable.** `status='revoked'` returns revoked orgs with full metadata; `revoke` is a lifecycle state, not erasure. Adopters with tenant-deletion or data-protection (e.g. GDPR erasure) obligations MUST implement purge separately — a revoked org's identifying metadata stays readable via `listOrgs` until the row is deleted.
 
 The spec does not introduce a tuple relation for "list orgs"; the gate lives at the host call site.
 
