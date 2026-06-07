@@ -234,6 +234,13 @@
       "runnable_today": false
     },
     {
+      "path": "fixtures/flags/duplicate-key.json",
+      "capability": "flags",
+      "operation": "create_flag",
+      "conformance_level": "MUST",
+      "runnable_today": false
+    },
+    {
       "path": "fixtures/file-metadata/lifecycle-shape.json",
       "capability": "file-metadata",
       "operation": "create_file_metadata",
