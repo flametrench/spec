@@ -1,0 +1,94 @@
+openapi: 3.1.0
+
+info:
+  title: Flametrench v0.4 — additions
+  version: 0.4.0
+  summary: |
+    Wire-surface additions for v0.4. Composes additively with
+    `flametrench-v0.1.yaml`, `flametrench-v0.2-additions.yaml`, and
+    `flametrench-v0.3-additions.yaml`. Use an OpenAPI bundler
+    (e.g. `swagger-cli bundle`) to merge into a single served spec.
+  description: |
+    Status: Proposed (v0.4 — in development).
+
+    This file defines ONLY the new wire-surface additions for v0.4. The
+    v0.1/v0.2/v0.3 paths are unchanged in their shape and remain in
+    their respective files — they coexist with the additions here.
+
+    First v0.4 wire-surface addition:
+
+    - `GET /v1/orgs` — cross-org enumeration (`TenancyStore.listOrgs`,
+      ADR 0025). Cursor-paginated, UUIDv7-ordered, with `query`
+      (name/slug substring) and `status` filters. Mirrors the v0.2
+      `GET /v1/users` shape. This also defines the `OrgPage` schema that
+      `UserPage`/`MembershipPage` descriptions already reference.
+
+    `$ref`s to shared components (`Cursor`, `Limit`, `Organization`,
+    `PageMeta`) resolve against the v0.1/v0.2 files at bundle time.
+
+paths:
+  # ─────────────────────── Organizations (v0.4 enumeration) ───────────────────────
+
+  /orgs:
+    get:
+      tags: [Organizations]
+      summary: List orgs (sysadmin / system)
+      description: |
+        Paginated cross-org enumeration introduced in v0.4 (ADR 0025).
+        Cursor-paginated and UUIDv7-ordered, matching `listMembers` /
+        `listUsers`.
+
+        **This is the one cross-tenant read in tenancy.** Adopters MUST
+        gate this endpoint at the route layer to an admin/system caller
+        — the SDK does not enforce authorization, and a missing gate is
+        a cross-tenant org-enumeration leak. Server-side callers with no
+        subject (e.g. a per-org background fan-out) are inherently
+        system-level and satisfy the bar, but MUST NOT be exposed on a
+        tenant-scoped route.
+
+        Filters:
+        - `query` — case-insensitive substring against org `name`/`slug`
+          (ADR 0011 fields).
+        - `status` — filter by org status.
+      operationId: listOrgs
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: query
+          in: query
+          description: Case-insensitive substring filter against org name/slug.
+          required: false
+          schema: { type: string }
+        - name: status
+          in: query
+          description: Filter by org status.
+          required: false
+          schema: { $ref: '#/components/schemas/OrgStatus' }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrgPage' }
+
+components:
+  schemas:
+    OrgStatus:
+      type: string
+      enum: [active, suspended, revoked]
+      description: Organization lifecycle status (ADR 0001 tenancy model).
+
+    OrgPage:
+      type: object
+      required: [data, page]
+      additionalProperties: false
+      description: |
+        Cursor-paginated `Organization` page envelope (ADR 0025). Mirrors
+        the existing `UserPage` / `MembershipPage` / `InvitationPage`
+        shapes. (Resolves the `OrgPage` reference those descriptions
+        already cite.)
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Organization' }
+        page: { $ref: '#/components/schemas/PageMeta' }

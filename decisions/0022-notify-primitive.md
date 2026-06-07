@@ -100,6 +100,21 @@ A notification is scoped to one `org` and addressed to one recipient. The `listN
 - `subject.id` follows the Flametrench-vs-adopter id split (decodable Flametrench ids; opaque adopter ids).
 - `data` is a JSON object ≤ 16 KB. The primitive stores and returns it; it does not interpret or render it.
 
+### Errors (normative)
+
+`createNotification` and the state-transition operations validate inputs and lifecycle. Violations raise the **uniform cross-capability taxonomy** (see [ADR 0019](./0019-audit-primitive.md) §Errors and the input-value-vs-state split): malformed input **values** raise `InvalidFormatError` with a `field` discriminator; **state-machine** violations raise `PreconditionError`. No notify-specific error classes.
+
+| Violation | Error |
+|---|---|
+| `type` outside `^[a-z0-9._-]{1,64}$` | `InvalidFormatError`, field `type` |
+| `data` not a JSON object, or > 16 KB | `InvalidFormatError`, field `data` |
+| `recipient_usr_id` not a valid `usr_<32hex>` | `InvalidFormatError`, field `recipient_usr_id` |
+| `scope` not a valid `org_<32hex>` | `InvalidFormatError`, field `scope` |
+| `subject` malformed (missing `kind`/`id`, or wrong shape) | `InvalidFormatError`, field `subject` |
+| A transition out of `dismissed` (terminal) — `markRead`/`markUnread`/`dismiss` on an already-dismissed notification | `PreconditionError` |
+
+**Recipient-scope / existence non-disclosure (NOT an input error).** Per §"Access — strictly recipient-scoped" and §"Tenancy non-inference", `get`/`markRead`/`markUnread`/`dismiss`/`countUnread`/`listNotifications` targeting a notification the caller does **not** own MUST be **indistinguishable from targeting a non-existent one**: both raise the **same** not-found error (e.g. `NotFoundError`), with no presence/count/error-code/timing differential that could reveal a foreign notification's existence. Implementations MUST NOT raise a distinct "forbidden/denied" error for the cross-recipient case — that differential would itself be the existence oracle the non-inference rule forbids. (This is the recipient-scoped instance of the [ADR 0019](./0019-audit-primitive.md) cross-scope non-disclosure discipline.)
+
 ## Consequences
 
 **Positive:**

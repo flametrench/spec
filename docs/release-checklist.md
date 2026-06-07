@@ -27,6 +27,11 @@ release is correct:
 | node-repo CI red on main for 5+ commits | `pnpm/action-setup@v4` started rejecting dual-spec configs (`with: version` + `packageManager:`) in a recent release; CI silently failed every push for weeks. Pre-existing schema-drift fail compounded the noise. Discovered only when the next PR landed. |
 | Go per-module tag gap — v0.3.0 + v0.3.0-rc.1 uninstallable | Go multi-module repos require per-module tags (`packages/<module>/vX.Y.Z`), not root tags. `v0.3.0` and `v0.3.0-rc.1` were tagged at the root, so `go get github.com/flametrench/flametrench-go/packages/identity@v0.3.0` returned "unknown revision." Release checklist had no Go section and missed the requirement entirely. Adopters saw 404 on install. Fixed by tagging per-module; Go proxy verification gate added to checklist. |
 | flametrench.dev spec-vs-SDK version conflation | v0.3.0 release header in spec README stated "v0.3.0 stable" over a matrix where only spec and Go were at v0.3, while PHP/Node/Python/Java remained at v0.2.x. Readers conflated "spec is v0.3" with "all SDKs are v0.3." Clarified via accurate parity wording once all families reached v0.3. |
+| Java multi-module version skew (main-pom-behind-tag) | `ids-java` was tagged at v0.3.0 but main's `pom.xml` remained at v0.2.0. Spec conformance CI fetched the tag (v0.3.0) but sibling repos' CI fetched main and got v0.2.0. Cross-repo version assertions failed; 6 spec conformance PRs turned red. Root cause: release process did not verify post-tag that main's version coordinate matches the new tag. |
+| Cross-repo version inconsistency (sibling mismatch) | SDK A depends on "SDK B @ v0.3.0"; B's main is at v0.2.0 after tagging B at v0.3.0. CI that consumes A's main gets the dependency-on-0.3.0 lock but can only find B's v0.2.0 in source, causing resolution failures. Sibling-consumption CI (e.g., spec conformance) fails even though the tag exists. Requires explicit cross-repo version alignment checks. |
+| `@flametrench/*` 0.3.x cohort — **npm EOTP at publish** (2026-06-07) | A granular/publish npm token demanded a 2FA OTP in CI; the workflow failed at the first package (`ids@0.3.0`) with `npm error code EOTP`. Fixed by swapping `NPM_TOKEN` to a **Classic Automation token** (bypasses 2FA for CI). **Never disable account 2FA to publish** — especially mid-incident. The automation token is just as fast. |
+| `node/publish.yml` — **auth env step-scoped, not job-scoped** (2026-06-07) | `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` was indented under only the *last* publish step, so the first three package publishes ran tokenless and would 401 (if they reached that point). Fixed by moving `env:` to **job level** (commit `cd71353`). In multi-step publish workflows, registry auth must be job-level or on every step. |
+| Identity-only publish would ship **broken tarball** (2026-06-07) | `@flametrench/identity@0.3.1` depends on `@flametrench/ids` via `workspace:*` → resolves to `ids@0.3.0` in the tarball. Publishing identity alone while `ids@0.3.0` isn't on npm = unresolvable `npm install` for adopters. Must publish the **full cohort in dependency order**; a single-package selector default is unsafe when the sibling version isn't yet on the registry. Verify the publish publishes the cohort, not just the main package. |
 
 The pattern across these is the same: **"it works on my machine" or "the
 source is correct" was treated as a release proof.** Proof must be
@@ -189,6 +194,89 @@ publish:
       `@flametrench/identity@0.2.1`). Push tags after the publish
       succeeds, not before — a tagged-but-unpublished version is a
       release-process lie.
+
+### npm / Per-ecosystem specifics
+
+- [ ] **npm 2FA → Automation token (not granular/Publish token).** If the
+      publishing account has 2FA enabled, the CI token **MUST be a Classic
+      Automation token**. Granular or Publish tokens demand an OTP (code
+      `EOTP`) in CI, blocking the entire publish workflow. Do **not** disable
+      account 2FA as a workaround — especially during an incident when
+      security discipline matters most. The automation token is just as fast.
+- [ ] **Auth env must be job-level (or on every publish step).** In multi-step
+      publish workflows (e.g., `ids → identity → tenancy → authz`), the
+      registry auth env (`NODE_AUTH_TOKEN`, etc.) must be set at **job level**
+      (above all steps) or on **every** publish step individually — not just
+      the final one. Step-level scoping on only the last step leaves earlier
+      packages tokenless, causing 401s and partial publishes.
+- [ ] **Confirm cohort, not single-package default, before firing.** If you
+      have a workflow_dispatch input that selects `@flametrench/identity`
+      (the main package), verify you're running with `all` or the full
+      dependency-ordered cohort, not the single-package default. Any package
+      whose `workspace:*` resolves to a sibling version **not yet on the
+      registry** ships a broken tarball. For the identity cohort: publish in
+      order (`ids → identity → tenancy → authz`); verify each is live before
+      assuming the next succeeds.
+- [ ] **"Guarded workflow" ≠ "never published."** Don't infer a package's
+      published state from its current CI workflow guard (manual trigger vs
+      auto-trigger). Query the registry directly: `npm view <pkg> versions --json`.
+      The Node 0.2.x-on-npm exposure (a 5+ week incident) was missed because
+      the reasoning was "the workflow is guarded, so 0.2.x was never published"
+      — a local-config inference, not a registry fact. Always verify against
+      the actual published state.
+
+---
+
+## Post-tag hygiene (recommended — release-to-main synchronization for maintainability)
+
+**After tagging vX.Y.Z, main's version coordinates SHOULD be bumped to forward-SNAPSHOT or the next minor, depending on the project's convention.** This keeps the repository in a clean, maintainable state and prevents *accidental* consumption of stale main versions during manual builds or debugging.
+
+**⚠️ IMPORTANT:** This hygiene check is NOT the load-bearing gate for preventing version-skew flooding. The actual flood prevention is the **tag-pin consistency check** (documented under "Cross-repo version consistency" below). Sibling-repo CI must pin to RELEASED TAGS (`ref: vX.Y.Z`), never default-branch. As long as CI pins to tags, main's version is irrelevant.
+
+- [ ] The commit(s) that added the version bump for the tag are on `main`
+      (not just on a release branch). If the tag was cut from a `release/` branch,
+      you must cherry-pick the version bump back to main or rebase main to
+      include it.
+- [ ] **Main's version coordinate (package.json, pom.xml, pyproject.toml, go.mod)
+      should be:**
+  - The same version as the tag (e.g., if you tagged `v0.3.0`, main has `0.3.0` or
+    `0.3.0-SNAPSHOT`), OR
+  - Explicitly forward of the tag (e.g., tag `v0.3.0`, main has `0.3.1-SNAPSHOT` or `0.4.0-SNAPSHOT`).
+  
+  Leaving main behind the tag (e.g., tag `v0.3.0` while main is `0.2.0`) is not a
+  blocking issue *if* sibling CI pins to the tag, but it's poor hygiene and makes
+  local debugging confusing.
+
+- [ ] CI is green on `main` after the version bump. If CI goes red from the
+      bump alone, investigate before merging — version-coordinate changes
+      should not cause CI to fail.
+
+---
+
+## Cross-repo version consistency (THE load-bearing gate for flood prevention)
+
+**All sibling pins in CI must point to RELEASED TAGS (`ref: vX.Y.Z`), never
+default-branch.** This is the structural gate that prevents version-skew
+flooding. Because multi-repo CI never reads main's version, main can be
+SNAPSHOT or stable without risk — the tag pins are what matter.
+
+- [ ] **For multi-repo CI (e.g., spec conformance):** Every SDK pin must
+      point to an existing released tag:
+  - ✅ `ref: v0.3.0` (existing tag) — safe, always resolves correctly
+  - ❌ `ref: main` or default-branch (may be SNAPSHOT, may not match expectations) — unsafe, causes version mismatch
+  - ❌ `ref: v0.3.1-SNAPSHOT` (non-existent tag) — unsafe, won't resolve
+
+- [ ] **Required CI gate:** A status check that validates every sibling `ref:`
+      in CI config points to an actual released tag:
+  - `git ls-remote --tags <repo> refs/tags/<ref>` must succeed for every pin
+  - Fails if any pin is stale, future, or non-existent
+  - This gate prevents the flood structurally: the flood cannot occur if
+    every pin is locked to a released tag
+
+- [ ] **After tagging vX.Y.Z:** Ensure all dependents either pin the new tag
+      (vX.Y.Z) before their own release, or have a released tag that pins the
+      sibling version they need. Never leave a tag that pins a non-existent
+      sibling version.
 
 ---
 

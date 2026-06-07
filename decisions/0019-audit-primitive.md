@@ -165,16 +165,32 @@ Mutation operations (`update`, `delete`) intentionally do not exist.
 - `aud_<32hex>` per `docs/ids.md`; `id` is a UUIDv7.
 - Exactly one of `auth.{session_id,pat_id,share_id,system_id}` is present and matches `auth.kind`.
 
+### Errors (normative)
+
+`write` validates the event shape before durably recording it. Shape/value violations raise the **cross-cutting `InvalidFormatError`** (the same error the identity, tenancy, and authorization layers raise for input-shape/value violations), carrying a `field` discriminator naming the offending part of the event. The primitive does **not** mint an audit-specific error class — the taxonomy stays uniform across capabilities, consistent with the input-value-vs-state-precondition split the SDKs already use elsewhere (an out-of-range value is `InvalidFormatError`; a failed lookup against system state is `PreconditionError`).
+
+| Violation | Error |
+|---|---|
+| Zero, multiple, or mismatched `auth.{session_id,pat_id,share_id,system_id}` for the given `auth.kind` (the exactly-one-and-matches constraint) | `InvalidFormatError`, field `auth` |
+| Event (including `metadata`) exceeds 64 KB | `InvalidFormatError`, field `size` |
+| `outcome` outside `{success,failure,denied,pending}` | `InvalidFormatError`, field `outcome` |
+| `actor_usr_id` non-null but not a valid `usr_<32hex>` (a `null` actor is valid — see pre-auth/system) | `InvalidFormatError`, field `actor_usr_id` |
+
+**Opacity is preserved — these never raise a format error:** `action`, `on_behalf.agent_id`, `auth.system_id`, and adopter `target.id` are opaque, adopter-defined strings (§`action`, §Identifiers); the primitive MUST NOT format-validate or `decode` them. `target.kind` is validated only structurally (a Flametrench entity type per `docs/ids.md`, **or** an adopter `object_type` matching `^[a-z]{2,6}$`); a `target.kind` matching neither raises `InvalidFormatError`, field `target.kind`.
+
+`recorded_at` server-set semantics, immutability (no `update`/`delete`), and the cross-scope non-disclosure invariant are not input-validation failures and are governed by their own sections, not by this table.
+
 ### Denied-operation and cross-scope disclosure (normative)
 
 The audit surface must not become a cross-tenant existence oracle. Therefore:
 
 > A denied operation MUST produce an `aud` event with `outcome: "denied"`. When the denial is a **cross-scope** access — the actor is not a member of the target `scope` — the event MUST be recorded **only against the actor's own scope** and MUST NOT be emitted to, or be observable from, the **target scope's audit stream**. An audit consumer scoped to the target organization MUST NOT be able to infer the existence of the probed target from the **presence, count, content, or ordering** of events in that scope's audit stream.
 
-Two clarifications:
+Three clarifications:
 
 1. **No resolvable actor scope.** If the actor has no resolvable scope (e.g. `auth.kind = "system"` / `actor_usr_id: null` performing a cross-scope probe), the event MUST be recorded to a system/global audit stream that is **not observable from the target scope**. The non-inference invariant holds regardless of whether an actor scope exists.
 2. **Timing is scoped to the audit stream, not the API.** The MUST above governs the target scope's **observable audit stream** (presence/count/content/ordering). Wall-clock side channels of the underlying API response (a response that is measurably slower when the target exists) are real but are an **adopter security-hardening** concern; see [`docs/security.md`](../docs/security.md). This ADR does not over-promise constant-time API behavior at the event-contract layer.
+3. **The ordering channel covers cursors and the event `id` itself.** The "ordering" channel of the MUST above extends to **pagination cursors and any sequence position surfaced through a scoped read** (`query`/`count`/`export` and their cursors): a scope-scoped read MUST NOT reveal a global or cross-scope sequence position. The only ordering observable within a scope is the relative (`recorded_at`, `id`) order of events **in that scope**; events recorded to other scopes (or the system/global stream) MUST NOT be inferable from gaps, cursor jumps, or count deltas in a scope's view. An implementation using a global monotonic sequence MUST NOT encode it into a scoped cursor in a gap-observable form (cursor over per-scope (`recorded_at`, `id`), never over a global offset). This includes any monotonic counter embedded in the event `id`: a UUIDv7 monotonic sub-counter (RFC 9562 `rand_a`, "method 1") MUST be per-scope or random, **never a global cross-scope counter** — otherwise two same-millisecond events in one scope with counter values `c` and `c+2` would reveal a hidden event `c+1` in another scope. The (UUIDv7 `id` + `recorded_at`) total ordering of §"Append-only semantics" is a property of the global/system stream; it MUST NOT be exposed as a dense cross-scope ordinal through any scoped view.
 
 ## Consequences
 
