@@ -225,6 +225,13 @@
       "operation": "create_file_metadata",
       "conformance_level": "MUST",
       "runnable_today": false
+    },
+    {
+      "path": "fixtures/notifications/error-cases.json",
+      "capability": "notifications",
+      "operation": "create_notification",
+      "conformance_level": "MUST",
+      "runnable_today": false
     }
   ]
 }
