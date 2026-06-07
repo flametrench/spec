@@ -87,7 +87,7 @@ Access decisions reuse `authz.check()` (ADR 0001) on the file as object:
 | `updateFileMetadata` | Mutate the mutable subset (`name`, `status`); emits `aud`. |
 | `deleteFileMetadata` | Transition to `status: "deleted"` (soft); emits `aud`. |
 
-`content_type`, `owner_usr_id`, and `scope` are immutable after create. `size_bytes`, `checksum`, and `storage_ref` are immutable **once set** (at create for a directly-`active` file, or at the `pending → active` transition). A changed file's bytes are a new `file_`.
+`content_type`, `owner_usr_id`, and `scope` are immutable after create. `size_bytes`, `checksum`, and `storage_ref` are immutable **once set** (at create for a directly-`active` file, or at the `pending → active` transition). A changed file's bytes are a new `file_`. The `pending → active` transition is performed by `updateFileMetadata`, which at that transition accepts `size_bytes`, `checksum`, and `storage_ref` as a **one-time set** (alongside `status: "active"`) — in addition to the general mutable subset (`name`, `status`); once set they are immutable per the above.
 
 ### Audit emission
 
@@ -104,6 +104,23 @@ A `file_` is scoped to one `org`. Cross-scope access is impossible through the p
 - `content_type` is an IANA media type string; the primitive does not validate it against the bytes (it cannot — it does not hold the bytes).
 - `size_bytes` is a non-negative integer; `checksum.algo` is `sha-256` (v0.4); `checksum.value` is 64 lowercase hex.
 - `storage_ref` is an opaque non-empty string; the primitive never dereferences it.
+
+### Errors (normative)
+
+`createFileMetadata` and `updateFileMetadata` validate inputs and lifecycle before writing. Violations raise the **same cross-cutting taxonomy the other primitives use** (uniform across capabilities; see [ADR 0019](./0019-audit-primitive.md) §Errors and the input-value-vs-state-precondition split): malformed input **values** raise `InvalidFormatError` with a `field` discriminator; violations of **state** (immutability, lifecycle transitions) raise `PreconditionError`. The primitive does not mint file-specific error classes.
+
+| Violation | Error |
+|---|---|
+| `name` outside 1–255 Unicode code units | `InvalidFormatError`, field `name` |
+| `checksum.algo` ≠ `sha-256`, or `checksum.value` not 64 lowercase hex | `InvalidFormatError`, field `checksum` |
+| `size_bytes` negative | `InvalidFormatError`, field `size_bytes` |
+| `content_type` empty / not a media-type string | `InvalidFormatError`, field `content_type` |
+| `storage_ref` empty | `InvalidFormatError`, field `storage_ref` |
+| Activating (`pending → active`) with any of `size_bytes`/`checksum`/`storage_ref` still null | `InvalidFormatError`, field of the missing one (all three are required to activate) |
+| Mutating an immutable field — `content_type`/`owner_usr_id`/`scope` (after create), or `size_bytes`/`checksum`/`storage_ref` (once set) | `PreconditionError` |
+| Invalid lifecycle transition — anything other than `pending→active`, `pending→deleted`, `active→deleted` (e.g. `active→pending`, `deleted→*`) | `PreconditionError` |
+
+`storage_ref`, `content_type`, and `name` are stored **verbatim** and never dereferenced or content-validated (the storage-agnostic line): `InvalidFormatError` for them is a shape/length check only, never a check against the actual bytes. **Access-denied is not in this table** — it is an `authz.check()` outcome governed by §Access and the [ADR 0019](./0019-audit-primitive.md) denied-op / cross-scope non-disclosure rule, not an input-validation error.
 
 ## Consequences
 
