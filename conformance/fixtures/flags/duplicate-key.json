@@ -1,0 +1,40 @@
+{
+  "$schema": "../../fixture.schema.json",
+  "spec_version": "0.4.0",
+  "capability": "flags",
+  "operation": "create_flag",
+  "conformance_level": "MUST",
+  "spec_section": "decisions/0021-flags-primitive.md#errors-normative",
+  "description": "Duplicate `(scope, key)` \u2192 `PreconditionError` (ADR 0021 \u00a7Errors / \u00a7Constraints within-scope key uniqueness). A second `createFlag` with the same `scope`+`key` MUST raise `PreconditionError` \u2014 NOT a primitive-specific class. This pins the cross-SDK convergence away from the outliers QA found (Python `ConflictError`, Go `ErrKeyConflict`); the canonical `PreconditionError` maps to each idiom (typed class in PHP/Java/Node/Python; a sentinel matchable via `IsPrecondition()` in Go). `runnable_today:false` until flags is implemented across all five SDKs and converged on the error class.",
+  "tests": [
+    {
+      "id": "create_flag.duplicate_scope_key_is_precondition",
+      "description": "Two `createFlag` calls with the same `(scope, key)`: the first succeeds; the second MUST raise `PreconditionError` (the key already exists in the scope). It MUST NOT be a novel conflict class.",
+      "steps": [
+        {
+          "op": "create_flag",
+          "input": {
+            "scope": "org_0190f2a81b3c7abc8123000000000004",
+            "key": "checkout.new-flow",
+            "enabled": true,
+            "default_variant": false,
+            "rules": []
+          }
+        },
+        {
+          "op": "create_flag",
+          "input": {
+            "scope": "org_0190f2a81b3c7abc8123000000000004",
+            "key": "checkout.new-flow",
+            "enabled": true,
+            "default_variant": false,
+            "rules": []
+          },
+          "expected": {
+            "error": "PreconditionError"
+          }
+        }
+      ]
+    }
+  ]
+}

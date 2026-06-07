@@ -127,6 +127,22 @@ A `flag` is scoped to one `org`. Cross-scope access is impossible through the pr
 - `basis_points` is an integer in `[0, 10000]`.
 - A rule's `relation` matches the authz relation grammar (`^[a-z_]{2,32}$`, ADR 0001); `object.type`/`object.id` follow the authz object rules (Flametrench-entity ids decodable, adopter ids opaque).
 
+### Errors (normative)
+
+`createFlag`/`updateFlag` validate inputs and the within-scope uniqueness constraint. Violations raise the **uniform cross-capability taxonomy** (see [ADR 0019](./0019-audit-primitive.md) §Errors and the input-value-vs-state split): malformed input **values** raise `InvalidFormatError` with a `field` discriminator; violations of a **state/constraint** (the `(scope, key)` uniqueness) raise `PreconditionError`. No flag-specific error classes.
+
+| Violation | Error |
+|---|---|
+| `createFlag` with a `(scope, key)` that already exists in the scope (the §Constraints uniqueness) | `PreconditionError` |
+| `key` outside `^[a-z0-9._-]{1,128}$` | `InvalidFormatError`, field `key` |
+| `basis_points` not an integer in `[0, 10000]` | `InvalidFormatError`, field `basis_points` |
+| a rule's `relation` / `object` outside the authz grammar | `InvalidFormatError`, field `relation` / `object` |
+| `scope` not a valid `org_<32hex>` | `InvalidFormatError`, field `scope` |
+
+**Duplicate `(scope, key)` is `PreconditionError`, not a new class.** It is the flag-key uniqueness constraint failing — a state/constraint violation, the same class ADR 0019/0020/0022/0024 use. A novel `ConflictError`/`ErrKeyConflict` would contradict the "no primitive-specific error classes" rule and diverge the cross-SDK contract (it already did: PHP/Java/Node chose `PreconditionError`; Python `ConflictError` and Go `ErrKeyConflict` are the outliers and converge to `PreconditionError`).
+
+**Cross-language idiom mapping.** The canonical error name (`PreconditionError`, `InvalidFormatError`) maps to each binding's idiom: a typed exception/class in PHP/Java/Node/Python (`PreconditionError`/`PreconditionException`), and in Go an **idiomatic typed sentinel** matchable via `errors.Is` and surfaced through a predicate (`IsPrecondition(err)` / `IsInvalidFormat(err)`) — Go is not required to mint an exception *class*, but its dup-key sentinel MUST satisfy `IsPrecondition`, exactly as it already exposes `IsInvalidFormat`. Conformance asserts the canonical name; each SDK's harness maps it to its idiom.
+
 ## Consequences
 
 **Positive:**
