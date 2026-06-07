@@ -231,14 +231,14 @@
       "capability": "flags",
       "operation": "assign_bucket",
       "conformance_level": "MUST",
-      "runnable_today": false
+      "runnable_today": true
     },
     {
       "path": "fixtures/flags/duplicate-key.json",
       "capability": "flags",
       "operation": "create_flag",
       "conformance_level": "MUST",
-      "runnable_today": false
+      "runnable_today": true
     },
     {
       "path": "fixtures/file-metadata/lifecycle-shape.json",
