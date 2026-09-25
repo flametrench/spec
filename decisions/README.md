@@ -6,7 +6,7 @@ ADRs are historical: once accepted, the content of an ADR is frozen. Future desi
 
 ## Status values
 
-- **`Accepted`** — the decision is current Flametrench specification. An ADR becomes `Accepted` **only** by the owner's recorded gate-(b) decision; its `Deciders:` line names the owner and the date ([PRINCIPLES.md](../PRINCIPLES.md) P5).
+- **`Accepted`** — the decision is current Flametrench specification. An ADR becomes `Accepted` **only** by the owner's recorded gate-(b) decision; its `Deciders:` line names the owner and the date ([PRINCIPLES.md](../PRINCIPLES.md) P5). **ADRs already marked `Accepted` before 2026-09-26** (0001–0018 and 0023) were accepted under the earlier stewards process and **keep that status**; they remain current specification and are not re-opened by this rule. Changing any of them still requires a superseding ADR.
 - **`Proposed`** — recommended and merged after the owner's gate-(a) approval to draft, awaiting his gate-(b) decision (accept, amend or hold). **Not normative.** A release never makes a `Proposed` ADR normative; only an explicit `Accepted` decision does ([PRINCIPLES.md](../PRINCIPLES.md) P4, P5).
 - **`Superseded by NNNN`** — replaced by a newer ADR; retained for historical context.
 - **`Deprecated`** — no longer reflects current practice but has not been formally replaced.
