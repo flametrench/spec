@@ -6,8 +6,8 @@ ADRs are historical: once accepted, the content of an ADR is frozen. Future desi
 
 ## Status values
 
-- **`Accepted`** — the decision is current Flametrench specification.
-- **`Proposed`** — design committed for an upcoming spec version (e.g., v0.2). Normative once the version it targets is released.
+- **`Accepted`** — the decision is current Flametrench specification. An ADR becomes `Accepted` **only** by the owner's recorded gate-(b) decision; its `Deciders:` line names the owner and the date ([PRINCIPLES.md](../PRINCIPLES.md) P5).
+- **`Proposed`** — recommended and merged after the owner's gate-(a) approval to draft, awaiting his gate-(b) decision (accept, amend or hold). **Not normative.** A release never makes a `Proposed` ADR normative; only an explicit `Accepted` decision does ([PRINCIPLES.md](../PRINCIPLES.md) P4, P5).
 - **`Superseded by NNNN`** — replaced by a newer ADR; retained for historical context.
 - **`Deprecated`** — no longer reflects current practice but has not been formally replaced.
 
@@ -51,7 +51,7 @@ ADRs are numbered sequentially from 0001 in the order accepted. Numbers never ch
 2. Assign the next sequential number (e.g., `0006-...`).
 3. Draft the sections: Context → Decision → Consequences → Deferred → Rejected alternatives → References.
 4. Submit a PR against `flametrench/spec` with the new file and an entry in this README.
-5. ADRs are merged only when the decision is actually made — not speculatively.
+5. ADRs are merged only when the decision is actually made — not speculatively. Merging as `Proposed` requires the owner's gate-(a) approval; flipping to `Accepted` requires his gate-(b) decision ([PRINCIPLES.md](../PRINCIPLES.md)).
 
 ## Writing style
 

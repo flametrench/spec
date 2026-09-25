@@ -106,6 +106,7 @@ What this specification does not define:
 ```
 flametrench/spec/
 ├── README.md                    this document
+├── PRINCIPLES.md                north star + guiding principles (how the spec is guarded)
 ├── LICENSE                      Apache 2.0
 ├── NOTICE                       copyright attribution
 ├── docs/
@@ -164,6 +165,9 @@ flametrench/spec/
 - Read the commit history — specification work is happening in the open, with reasoning in commit messages where it matters.
 
 ## Contributing
+
+How the specification is guarded — who decides, how a change moves from proposal to accepted, and what conformance means — is set out in [PRINCIPLES.md](PRINCIPLES.md). Read it before proposing a change.
+
 
 The specification is at v0.2 stable and the surface area is small, so direct contributions are limited while v0.3 work is being scoped. What helps most right now:
 
