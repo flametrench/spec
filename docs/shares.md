@@ -45,7 +45,7 @@ The returned `token` is the opaque base64url-encoded bearer credential, derived 
 
 #### Validation
 
-- `created_by` MUST resolve to a non-revoked `usr_id`. Implementations SHOULD reject share creation by suspended users.
+- `created_by` MUST resolve to an `active` `usr_id` (revoked or suspended creators raise `PreconditionError`; ADR 0029).
 - `relation` MUST match `^[a-z_]{2,32}$`. Otherwise `InvalidFormatError("relation")`.
 - `object_type` MUST match `^[a-z]{2,6}$`. Otherwise `InvalidFormatError("object_type")`.
 - `expires_in` MUST be positive and MUST NOT exceed 365 days. Otherwise `InvalidFormatError("expires_in_seconds")`. (An out-of-range `expires_in` is an input-value violation, not a state precondition — see [ADR 0024](../decisions/0024-share-ttl-bound-error-type.md).)

@@ -33,7 +33,7 @@ suspended → revoked             (terminal)
 ```
 
 - **`active`** — user can authenticate and participate.
-- **`suspended`** — user cannot authenticate; active sessions MUST be terminated when the transition happens. The user's memberships (`mem_`) are NOT affected by user-level suspension; if the intent is to suspend a specific membership, use `mem.status` instead.
+- **`suspended`** — user cannot authenticate; active sessions MUST be terminated when the transition happens. **No operation that authenticates a principal, or issues something that will (sessions, PATs, shares), may succeed for a non-`active` user** — evaluated at verify/issue time, since suspension is reversible; see ADR 0029 for the covered operations and pinned refusal errors. The user's memberships (`mem_`) are NOT affected by user-level suspension; if the intent is to suspend a specific membership, use `mem.status` instead.
 - **`revoked`** — user is terminated. All sessions MUST be terminated. All active credentials MUST transition to `revoked`. The user row is preserved for audit; it is never deleted.
 
 ### Operations
