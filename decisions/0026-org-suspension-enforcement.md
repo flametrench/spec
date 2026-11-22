@@ -148,6 +148,17 @@ grants, but not for direct grants, shares or PATs.
   suspension. The re-created tuples are new `tup_` rows, and nothing in the spec references a
   membership tuple's id. This is the same as membership reinstate, and nothing is re-provisioned.
 - **Invariant:** while an org is `suspended`, none of its membership role tuples exist.
+- **Removals during the suspension find no tuple.** `selfLeave`, `adminRemove`,
+  `suspendMembership` and `revokeOrg` on a suspended org update the `mem_` row as usual. Deleting a
+  membership role tuple that isn't there is a no-op, never an error.
+- **`reinstateOrg` is idempotent.** It creates a membership's role tuple only when an identical
+  `(usr, mem.role, org, org_id)` tuple doesn't already exist. So a retried or repeated reinstate,
+  or one on an org whose tuples are already present, creates no duplicate and raises nothing.
+- **Orgs suspended before a store adopts this ADR** still have their membership role tuples. The
+  store's upgrade MUST reconcile them before it serves `check()` under this ADR. For each org whose
+  status is `suspended`, it deletes the role tuples of that org's `active` memberships, in one
+  migration step, the same deletion `suspendOrg` makes. After that, `reinstateOrg` restores them as
+  usual.
 - **Atomicity:** a store operation that would create a membership role tuple reads the org's status
   and writes the tuple atomically with respect to `suspendOrg`, for example by locking the org row.
   Otherwise a concurrent `addMember` could leave a tuple behind.
@@ -266,8 +277,14 @@ grants, but not for direct grants, shares or PATs.
 - **Reinstate restores:** after `reinstateOrg`, `requireActiveOrg` returns the org,
   `check(member, role, org)` and the rewrite-derived `check` return `true`, and the `mem_` id is
   unchanged (no membership re-created).
-- **Removed during suspension:** a member `selfLeave`s while the org is suspended. After
-  `reinstateOrg`, their membership is `revoked` and has no tuple.
+- **Removed during suspension:** a member `selfLeave`s while the org is suspended, and it succeeds
+  with no error (the absent tuple's delete is a no-op). After `reinstateOrg`, their membership is
+  `revoked` and has no tuple.
+- **Reinstate is idempotent:** calling `reinstateOrg` logic twice leaves exactly one role tuple per
+  `active` membership.
+- **Upgrade reconciliation:** an org stored as `suspended` with its membership role tuples present,
+  the pre-ADR state, has none after the store's upgrade step. `check(member, role, org)` is then
+  `false`, and `true` after `reinstateOrg`.
 - **Suspended before:** a membership suspended before the org is suspended still has no tuple
   after `reinstateOrg`.
 - **No write on refusal:** `addMember` on a suspended org raises `OrgSuspendedError` and creates
@@ -304,11 +321,15 @@ grants, but not for direct grants, shares or PATs.
 
 ## Out of scope / Deferred
 
-- **ADR 0002:73's "sessions scoped to the org terminated"** for `selfLeave`. It is the same
-  contradiction with `identity.md` that §2 fixes. This ADR corrects the normative chapter
-  (`tenancy.md`'s `selfLeave` and `adminRemove`), and `tenancy.md` governs. Flametrench Spec asked
-  for the same one-line change in ADR 0002. It is left to a separate edit because this ADR's ticket
-  is scoped to `tenancy.md` and `identity.md`.
+- **ADR 0002's text, in a separate edit.** `tenancy.md` governs, and this ADR corrects it. The edit
+  is left out because this ADR's ticket is scoped to `tenancy.md` and `identity.md`. Two passages
+  need it:
+  - **ADR 0002:73,** "sessions scoped to the org terminated" for `selfLeave`. It is the same
+    contradiction with `identity.md` that §2 fixes, and Flametrench Spec asked for the same
+    one-line change there.
+  - **ADR 0002:36-41,** the membership-as-tuple duality: "Every active membership is represented
+    as BOTH…" and "The two cannot diverge". It needs §1a's exception: while the org is suspended,
+    an active membership has no `tup_` row.
 - **User suspension.** It's covered by `identity.md` and isn't changed here.
 - **Billing, and the reasons for suspending.**
 - **A store-level object-to-org map** that would let `check()` enforce suspension for direct
