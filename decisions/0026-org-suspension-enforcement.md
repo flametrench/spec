@@ -48,12 +48,37 @@ requireActiveOrg(org_id) → Organization
   //        the not-found error getOrg raises, for an unknown org
 ```
 
+**Errors and the wire.**
+- **Taxonomy:** both are subclasses of the cross-capability `PreconditionError`, as ADR 0009's
+  `precondition.*` errors are, so an existing `except PreconditionError` catches them. They are
+  state preconditions, not input-format errors (ADR 0019 and 0024's split), and there is no new
+  error family. Go exposes them through `IsPrecondition`, per ADR 0021's idiom mapping.
+- **HTTP:**
+  - **403,** with the `code` discriminator, for a caller who could already see the org (its
+    authenticated members).
+  - **The adopter's not-found (404)** for everyone else (§1, "No existence oracle").
+  - **Why 403 and not 409:** the spec's other `precondition.*` codes use 409 because the caller
+    can fix the conflict in the request. Here nothing in the request can fix it: the org is
+    closed, so the caller is refused.
+
 **Every org-scoped operation MUST pass `requireActiveOrg` for each org it touches.** It runs before
 `check()` and before any effect. That holds for every kind of bearer: a session, a PAT, a share
 token, or none.
 
 - **What "org-scoped" means:** an operation is org-scoped when any object it reads or changes
   belongs to an org.
+- **Exempt: operator work on the org itself.** These tenancy operations don't need the
+  precondition when an admin or system caller makes them, gated the way ADR 0025 gates
+  `listOrgs`:
+  - `getOrg`, `updateOrg`, `suspendOrg`, `reinstateOrg`, `revokeOrg`, `listOrgs` and
+    `requireActiveOrg`;
+  - operator tooling that reads a suspended org's memberships, invitations or audit for support.
+
+  Without this exemption, `reinstateOrg` would be impossible, and so would
+  `openapi/flametrench-v0.2-additions.yaml`'s "Suspended orgs MAY be updated". **The exemption is
+  for the operator, not for the org's members.** A route that exposes one of these operations to
+  the org's own members or bearers (an owner renaming their org, say) is org-scoped and MUST pass
+  the precondition, so a suspended org's owner can't act in it either.
 - **Which org:** the org that owns the **target object**, as the application derives it (the same
   derivation as Pattern B), not only an org named in the path or the request. An operation that
   touches objects of several orgs passes the precondition for each one.
@@ -97,7 +122,18 @@ then `check()`. Skipping the precondition is a conformance failure, just as skip
     share. That contradicts the reinstate-without-re-provisioning rule;
   - a PAT also serves its user's other orgs.
 - **Reinstating the org restores them** with no action. Their own expiry keeps running during the
-  suspension, and a single-use share that wasn't consumed stays unconsumed.
+  suspension.
+- **Single-use shares presented during the suspension are consumed and refused.**
+  `verifyShareToken` sets `consumed_at` on the first successful verify (`shares.md`, verify
+  steps 5 and 7), and only after that does the adopter learn the share's object, and so its org.
+  - So a single-use share presented while the org is suspended is consumed, the precondition then
+    refuses the request, and reinstating does **not** restore that share.
+  - This is the one effect allowed before the precondition. It changes only the token's own state
+    and grants nothing.
+  - A single-use share that isn't presented during the suspension stays unconsumed, and works after
+    reinstating.
+  - Reordering this would need a non-consuming resolve in `shares.md`. That is deferred (below),
+    because this ADR doesn't change ADR 0012's verify contract.
 - **A revoked org** fails the precondition permanently, so its tokens can never act in it again.
   Adopters MAY also revoke them for hygiene. This ADR doesn't require it.
 - **`verifyShareToken` and `verifyPatToken` are unchanged.** They verify the token. The
@@ -110,6 +146,10 @@ then `check()`. Skipping the precondition is a conformance failure, just as skip
   - the precondition on every org-scoped operation, for each org it touches, at execution time,
     including jobs, schedules, webhooks and fan-out;
   - not-found mapping for callers who couldn't already see the org;
+  - the operator exemption (§1), and the precondition on member-facing routes to those same
+    operations;
+  - both errors as `PreconditionError` subclasses, 403 to members, and the adopter's not-found to
+    everyone else;
   - not terminating user-bound sessions;
   - not revoking PATs or shares on suspension.
 - **MAY:**
@@ -140,8 +180,15 @@ then `check()`. Skipping the precondition is a conformance failure, just as skip
 - **Unknown org:** throws the same not-found error as `getOrg`.
 - **Sessions survive:** after `suspendOrg`, the member's session is not revoked (`revoked_at` is
   null), and so is a session of a user who belongs only to that org.
-- **Tokens survive:** after `suspendOrg`, the member's PAT and a share on an object of that org
-  verify. After `reinstateOrg` they still verify. The share's expiry is unchanged.
+- **Tokens survive:** after `suspendOrg`, the member's PAT and a multi-use share on an object of
+  that org verify. After `reinstateOrg` they still verify. The share's expiry is unchanged.
+- **Single-use share during the suspension:** presented after `suspendOrg`, it verifies, which
+  consumes it, and the request is refused by `requireActiveOrg`. After `reinstateOrg` it raises
+  `ShareConsumedError`. A single-use share not presented during the suspension verifies after
+  `reinstateOrg`.
+- **Operator exemption:** `reinstateOrg` and `updateOrg` succeed on a suspended org from a
+  system caller, without the precondition.
+- **Errors:** `OrgSuspendedError` and `OrgRevokedError` are `PreconditionError`s.
 - **Execution time, not enqueue time:** a job created while the org is active, and executed after
   `suspendOrg`, is refused by `requireActiveOrg` when it executes.
 
@@ -152,6 +199,9 @@ then `check()`. Skipping the precondition is a conformance failure, just as skip
 - **A store-level object-to-org map** that would let `check()` enforce suspension. It's rejected
   below, and could only return as its own ADR.
 - **Writing the conformance fixtures** above, which is a follow-up ticket.
+- **A non-consuming share resolve** (for example, `verifyShareToken(token, consume: false)` plus
+  an atomic `consumeShare`), so the precondition can run before a single-use share is consumed. It
+  would amend ADR 0012 and `shares.md`.
 
 ## Alternatives considered
 
