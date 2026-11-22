@@ -44,6 +44,7 @@ ADRs are numbered sequentially from 0001 in the order accepted. Numbers never ch
 | [0021](./0021-flags-primitive.md) | Feature-flags primitive (`flag`) (v0.4 — Proposed) | Boolean flags + ordered targeting rules; targeting reuses `authz` `check()`/tuples (no new DSL); deterministic SHA-256 bucketing pinned for cross-SDK identity; `evaluate` hot-path/unaudited; emits `aud`; promotes `flag` in `docs/ids.md`. Filed by SiteSource |
 | [0022](./0022-notify-primitive.md) | Notifications primitive (`not`) (v0.4 — Proposed) | Per-recipient record/event primitive (NOT a delivery engine — no SMTP/SMS/push/templating/retry); lifecycle `unread ⇄ read → dismissed`; strictly recipient-scoped access; emits `aud`; promotes `not` in `docs/ids.md`. Filed by SiteSource |
 | [0023](./0023-v03-implementation-constants.md) | v0.3 implementation constants (cross-SDK parity) (Accepted) | Consolidated source-of-truth table for 7 v0.3 constants the SDK families must agree on (PAT parse / dummy-hash / secret-cap / `auth.kind` / bearer-order; rewrite bounds 8/1024; tuple regexes); cites each value's authoritative home + enforcing fixture. Surfaced by the Go reference SDK |
+| [0027](./0027-strict-totp-step-replay.md) | Strict TOTP step replay (amends ADR 0008) (Accepted) | Reject any TOTP code whose matched step is ≤ the last accepted step (`mfa.totp_last_accepted_step`), under a row lock; highest step on collision; `ReplayedTotpError` is a subtype of `InvalidCredentialError` with code `unauthorized.totp_replayed`; harnesses match expected errors exactly |
 
 ## Writing a new ADR
 

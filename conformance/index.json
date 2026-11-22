@@ -253,6 +253,13 @@
       "operation": "create_notification",
       "conformance_level": "MUST",
       "runnable_today": false
+    },
+    {
+      "path": "fixtures/identity/mfa/totp-replay-rejected.json",
+      "capability": "identity",
+      "operation": "verify_mfa",
+      "conformance_level": "MUST",
+      "runnable_today": false
     }
   ]
 }
