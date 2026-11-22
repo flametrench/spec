@@ -205,7 +205,8 @@ The mint-new-user path (`as_usr_id = null`) does not require `accepting_identifi
 - `createInvitation(org_id, identifier, role, pre_tuples?, expires_at) → inv_id`.
 - `acceptInvitation(inv_id, as_usr_id?, accepting_identifier?)` — if the invitee already has an account, pass their `usr_id` AND `accepting_identifier` (the canonical identifier for that account, sourced from the host's auth context). If `as_usr_id` is null, the operation creates a fresh user; `accepting_identifier` may be omitted.
 - `declineInvitation(inv_id, as_usr_id?)`.
-- `revokeInvitation(inv_id, admin_usr_id)` — subject to admin authorization on the target org.
+- `revokeInvitation(inv_id, admin_usr_id)` — the SDK MUST verify, in the same transaction as the transition, that `admin_usr_id` holds an **active** membership **in the invitation's org** with role `owner` or `admin` (the same active-membership check as `adminRemove`), in one transaction: lock the invitation → authorize (locking the acting membership) → check `pending` → write. An unauthorized caller gets `ForbiddenError` whatever the invitation's state; no state change. On success `terminal_by = admin_usr_id`. (ADR 0028.)
+- `revokeInvitationAsSystem(inv_id)` — system revocation with no actor: `terminal_by = NULL`, no SDK authorization check. **Adopters MUST gate the call site to server-side system/automation callers; it MUST NOT be reachable from any user-facing or tenant-scoped route** — the SDK cannot enforce this and conformance cannot catch a missing gate. (ADR 0028.)
 - `getInvitation(inv_id) → inv`.
 - `listInvitations(org_id, status?) → [inv]`.
 
