@@ -143,9 +143,16 @@ grants, but not for direct grants, shares or PATs.
   tuple `(usr, <role>, org, <org_id>)` of every `active` membership of the org. The `mem_` rows
   stay `active` and unchanged.
 - **`reinstateOrg`:** in the same transaction, it re-creates that tuple for every membership that
-  is `active` at reinstate time, from its unchanged `mem_` row (`relation = mem.role`). Suspended
-  and revoked memberships get no tuple, whether they were suspended before or during the org's
-  suspension. The re-created tuples are new `tup_` rows, and nothing in the spec references a
+  is `active` at reinstate time **and whose user isn't `revoked`**, from its unchanged `mem_` row
+  (`relation = mem.role`). Suspended and revoked memberships get no tuple, whether they were
+  suspended before or during the org's suspension.
+  - **Why the user check:** `revokeUser` removes the user's tuples (`cascadeRevokeSubject`) but
+    leaves their `mem_` rows `active`. Without the check, reinstating the org would give a revoked
+    user `check()` = true again. They couldn't sign in, but anything that acts for a user without
+    them present would include them again, such as notification fan-out, scheduled jobs and owner
+    counts (Flametrench Security).
+  - **A suspended user keeps the tuple,** because user suspension is enforced at authentication
+    (`identity.md`), not in tuples. The re-created tuples are new `tup_` rows, and nothing in the spec references a
   membership tuple's id. This is the same as membership reinstate, and nothing is re-provisioned.
 - **Invariant:** while an org is `suspended`, none of its membership role tuples exist.
 - **Removals during the suspension find no tuple.** `selfLeave`, `adminRemove`,
@@ -290,6 +297,9 @@ grants, but not for direct grants, shares or PATs.
   after the upgrade step, and `check(member, role, org)` is `false` until `reinstateOrg`.
 - **Suspended before:** a membership suspended before the org is suspended still has no tuple
   after `reinstateOrg`.
+- **Revoked user stays revoked:** revoke a member's user, then suspend the org and reinstate it.
+  `check(usr, role, org)` stays `false`. The same holds when the user is revoked during the
+  suspension.
 - **No write on refusal:** `addMember` on a suspended org raises `OrgSuspendedError` and creates
   neither a `mem_` nor a `tup_`.
 - **Sole owner can't transfer while suspended:** a sole owner's `selfLeave(mem, transferTo)` raises
