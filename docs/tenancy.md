@@ -31,7 +31,7 @@ Orgs are flat: an `org_` has no parent org. Modeling divisions or sub-teams is d
 Tri-state, matching users:
 
 - **`active`** — org is live.
-- **`suspended`** — org access is paused. All active sessions scoped to the org MUST be terminated when the transition happens. Memberships remain in their current status — reinstating the org re-activates the authorization grants without requiring re-provisioning members.
+- **`suspended`** — org access is paused. Every org-scoped operation in the org MUST fail the org-active precondition (below). User-bound sessions, PATs and share tokens are NOT terminated or revoked; each use is refused per request ([ADR 0026](../decisions/0026-org-suspension-enforcement.md)). Memberships remain in their current status — reinstating the org re-activates the authorization grants without requiring re-provisioning members.
 - **`revoked`** — org is terminated. All active memberships MUST be transitioned to `revoked`. The `org_` row is preserved for audit.
 
 ### Operations
@@ -40,7 +40,19 @@ Tri-state, matching users:
 - `getOrg(org_id) → org`.
 - `updateOrg(org_id, *, name?, slug?) → org` — partial update of v0.2 metadata fields. An omitted parameter means "don't change"; an explicit null means "set to null." Slug uniqueness violations raise `OrgSlugConflictError`. Updating a revoked org raises `AlreadyTerminalError`.
 - `suspendOrg(org_id)`, `reinstateOrg(org_id)`, `revokeOrg(org_id)`.
+- `requireActiveOrg(org_id) → org` — the org-active precondition (ADR 0026). Returns the org when `active`; raises `OrgSuspendedError` (`code: precondition.org_suspended`), `OrgRevokedError` (`code: precondition.org_revoked`), or the not-found error `getOrg` raises.
 - `listOrgs(*, cursor?, limit = 50, query?, status?) → Page<Organization>` — paginated cross-org enumeration (ADR 0025). `query` is a case-insensitive substring over `name`/`slug`; `status` filters `active|suspended|revoked` (omitted = all). Ordered by `id` ASC. **This is the one cross-tenant read in tenancy — the adopter MUST gate the call site to an admin/system caller** (a missing gate is a cross-tenant org-enumeration leak); server-side callers with no subject (e.g. a per-org background fan-out) are inherently system-level and satisfy the bar but MUST NOT be exposed on a tenant-scoped route. A missing gate discloses the **entire customer roster** (id/status/name/slug/timestamps — a searchable tenant directory + churn/billing + growth signal), not merely an enumeration count. **Revoked orgs remain enumerable:** `status='revoked'` returns full metadata — `revoke` is a lifecycle state, not erasure, so adopters with deletion/data-protection (e.g. GDPR) obligations MUST purge separately. See ADR 0025 §Authorization + ADR 0019 (the cross-tenant non-inference invariant `listOrgs` is the single explicit exception to).
+
+### Suspension enforcement (normative; ADR 0026)
+
+`check()` reads tuples only, and suspending an org keeps them, so `check()` is NOT the lockout. A `check()` returning `true` for a suspended org's member is conformant. The lockout is a precondition:
+
+- Every **org-scoped operation** (one that reads or changes any object belonging to an org) MUST pass `requireActiveOrg` for **each org it touches**, before `check()` and before any effect, whatever the bearer: session, PAT, share token or none.
+- The org is the one that owns the **target object**, as the application derives it (the same derivation as `authorization.md` Pattern B), not only an org named in the path. A request resolved through a verified share or a PAT checks that object's org.
+- Queued jobs, scheduled tasks, webhook deliveries and event fan-out MUST pass it **when they execute**, not only when they are created.
+- Where the adopter would answer the caller with not-found (a non-member, an unauthenticated caller), it MUST NOT expose `OrgSuspendedError` or `OrgRevokedError`, and MUST map both to that same not-found. The distinct codes are for callers who could already see the org.
+- Suspension MUST NOT terminate user-bound sessions (`identity.md`) or revoke PATs or shares. Reinstating restores them with no action; their own expiry keeps running. Adopters with org-bound sessions MAY terminate those.
+- An adopter MAY cache the result per request or per job execution, never longer.
 
 ## Memberships
 
@@ -219,5 +231,7 @@ The mint-new-user path (`as_usr_id = null`) does not require `accepting_identifi
 - **Pre-tuple expansion.** An invitation with `pre_tuples = [{"relation":"viewer", "object_type":"project", "object_id":"<uuid>"}]`, when accepted, MUST result in exactly one additional `tup_` row beyond the membership tuple, with the specified relation and object and subject=accepting user.
 
 - **`removed_by` attribution.** A membership revoked via `selfLeave` MUST have `removed_by = NULL`. A membership revoked via `adminRemove` MUST have `removed_by` set to the admin's `usr_id`.
+
+- **Org suspension (ADR 0026; fixtures to be written).** After `suspendOrg`, `requireActiveOrg` MUST raise `OrgSuspendedError` while the member's `check()` still returns `true`, their session is not revoked, and their PAT and the org's shares still verify. After `reinstateOrg` it MUST return the org with no membership or tuple re-created. After `revokeOrg` it MUST raise `OrgRevokedError`. A job created before `suspendOrg` and executed after it MUST be refused when it executes.
 
 More fixtures will be added in `spec/conformance/` as implementations surface specific questions.
