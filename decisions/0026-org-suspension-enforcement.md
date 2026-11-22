@@ -151,9 +151,10 @@ grants, but not for direct grants, shares or PATs.
 - **Removals during the suspension find no tuple.** `selfLeave`, `adminRemove`,
   `suspendMembership` and `revokeOrg` on a suspended org update the `mem_` row as usual. Deleting a
   membership role tuple that isn't there is a no-op, never an error.
-- **`reinstateOrg` is idempotent.** It creates a membership's role tuple only when an identical
-  `(usr, mem.role, org, org_id)` tuple doesn't already exist. So a retried or repeated reinstate,
-  or one on an org whose tuples are already present, creates no duplicate and raises nothing.
+- **`reinstateOrg`'s tuple re-creation creates no duplicate tuple.** It creates a membership's role
+  tuple only when an identical `(usr, mem.role, org, org_id)` tuple doesn't already exist. This
+  ADR adds no lifecycle rule for calling `reinstateOrg` on an org that is already `active`. That
+  stays whatever the lifecycle already says.
 - **Orgs suspended before a store adopts this ADR** still have their membership role tuples. The
   store's upgrade MUST reconcile them before it serves `check()` under this ADR. For each org whose
   status is `suspended`, it deletes the role tuples of that org's `active` memberships, in one
@@ -280,11 +281,13 @@ grants, but not for direct grants, shares or PATs.
 - **Removed during suspension:** a member `selfLeave`s while the org is suspended, and it succeeds
   with no error (the absent tuple's delete is a no-op). After `reinstateOrg`, their membership is
   `revoked` and has no tuple.
-- **Reinstate is idempotent:** calling `reinstateOrg` logic twice leaves exactly one role tuple per
-  `active` membership.
-- **Upgrade reconciliation:** an org stored as `suspended` with its membership role tuples present,
-  the pre-ADR state, has none after the store's upgrade step. `check(member, role, org)` is then
-  `false`, and `true` after `reinstateOrg`.
+- **No duplicate tuple:** reinstating an org where a member's role tuple already exists, for
+  example one written before the suspension and not yet reconciled, leaves exactly one role tuple
+  per `active` membership.
+- **Upgrade reconciliation is not a conformance fixture.** The fixture format can't express a
+  store's pre-ADR state or its upgrade step. The MUST stands, and each SDK proves it in its own
+  migration tests: an org stored as `suspended` with its membership role tuples present has none
+  after the upgrade step, and `check(member, role, org)` is `false` until `reinstateOrg`.
 - **Suspended before:** a membership suspended before the org is suspended still has no tuple
   after `reinstateOrg`.
 - **No write on refusal:** `addMember` on a suspended org raises `OrgSuspendedError` and creates
