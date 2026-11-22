@@ -280,6 +280,13 @@
       "operation": "create_share",
       "conformance_level": "MUST",
       "runnable_today": false
+    },
+    {
+      "path": "fixtures/tenancy/revoke-invitation-as-system.json",
+      "capability": "tenancy",
+      "operation": "revoke_invitation_as_system",
+      "conformance_level": "MUST",
+      "runnable_today": false
     }
   ]
 }
