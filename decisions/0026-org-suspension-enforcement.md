@@ -162,8 +162,9 @@ then `check()`. Skipping the precondition is a conformance failure, just as skip
 
 - **Following the spec gives a total lockout per org.** No org-scoped operation runs in a suspended
   org, whoever the bearer is and whenever the work was queued.
-- **Reinstating is instant and lossless.** Members, grants, sessions, PATs and shares all work again
-  on the next request.
+- **Reinstating is instant and lossless,** except for a single-use share presented during the
+  suspension, which stays consumed (§3). Members, grants, sessions, PATs and every other share
+  work again on the next request.
 - **Every org-scoped call site has one more line** (`requireActiveOrg`) and one more lookup, which
   an adopter MAY cache per request. A cache MUST NOT outlive the request or the job execution.
 - **The cost moves to adopters:** an adopter that skips the precondition at one call site reopens
@@ -213,7 +214,7 @@ then `check()`. Skipping the precondition is a conformance failure, just as skip
 - **Terminate every member's sessions.** Rejected: sessions are user-bound, and this would lock
   members out of their other orgs (§2).
 - **Revoke PATs and shares on suspension.** Rejected: it's irreversible, and it breaks lossless
-  reinstate (§3).
+  reinstate (§3) for every token, not only a single-use share presented during the suspension.
 
 ## References
 
@@ -225,5 +226,5 @@ then `check()`. Skipping the precondition is a conformance failure, just as skip
 
 ## Filed by
 
-`sitesource/admin` (ticket 17tvpau6ddx), from admin's suspended-org finding (17tvpau6db9). The
-admin-security co-sign is in the PR.
+`sitesource/admin`, after it found that a suspended org's users could still reach plugin code.
+The admin-security co-sign is in the PR.
