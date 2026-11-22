@@ -266,6 +266,20 @@
       "operation": "verify_mfa",
       "conformance_level": "MUST",
       "runnable_today": false
+    },
+    {
+      "path": "fixtures/identity/user-status-gates.json",
+      "capability": "identity",
+      "operation": "verify_password",
+      "conformance_level": "MUST",
+      "runnable_today": false
+    },
+    {
+      "path": "fixtures/authorization/shares/created-by-status.json",
+      "capability": "authorization",
+      "operation": "create_share",
+      "conformance_level": "MUST",
+      "runnable_today": false
     }
   ]
 }
