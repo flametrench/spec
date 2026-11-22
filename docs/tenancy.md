@@ -31,7 +31,7 @@ Orgs are flat: an `org_` has no parent org. Modeling divisions or sub-teams is d
 Tri-state, matching users:
 
 - **`active`** — org is live.
-- **`suspended`** — org access is paused. Every org-scoped operation in the org MUST fail the org-active precondition (below). User-bound sessions, PATs and share tokens are NOT terminated or revoked; each use is refused per request ([ADR 0026](../decisions/0026-org-suspension-enforcement.md)). Memberships remain in their current status — reinstating the org re-activates the authorization grants without requiring re-provisioning members.
+- **`suspended`** — org access is paused. Every org-scoped operation in the org MUST fail the org-active precondition (below). User-bound sessions, PATs and share tokens are NOT terminated or revoked; each use is refused per request ([ADR 0026](../decisions/0026-org-suspension-enforcement.md)). Memberships and their grants are retained — reinstating the org lifts the precondition, with no re-provisioning of members.
 - **`revoked`** — org is terminated. All active memberships MUST be transitioned to `revoked`. The `org_` row is preserved for audit.
 
 ### Operations
@@ -52,9 +52,12 @@ Tri-state, matching users:
 - The org is the one that owns the **target object**, as the application derives it (the same derivation as `authorization.md` Pattern B), not only an org named in the path. A request resolved through a verified share or a PAT checks that object's org.
 - Queued jobs, scheduled tasks, webhook deliveries and event fan-out MUST pass it **when they execute**, not only when they are created.
 - Where the adopter would answer the caller with not-found (a non-member, an unauthenticated caller), it MUST NOT expose `OrgSuspendedError` or `OrgRevokedError`, and MUST map both to that same not-found. The distinct codes are for callers who could already see the org.
-- Suspension MUST NOT terminate user-bound sessions (`identity.md`) or revoke PATs or shares. Reinstating restores them with no action; their own expiry keeps running. Adopters with org-bound sessions MAY terminate those.
+- Suspension MUST NOT terminate user-bound sessions (`identity.md`) or revoke PATs or shares. Reinstating restores them with no action; their own expiry keeps running. An adopter that keeps a session it binds to one org MAY terminate that session.
 - **Single-use shares:** `verifyShareToken` consumes a single-use share before its org is known, so one presented during the suspension is consumed and then refused, and reinstating does not restore it. This is the one effect allowed before the precondition.
-- An adopter MAY cache the result per request or per job execution, never longer.
+- **Store-level refusal:** `addMember`, `createInvitation`, `acceptInvitation`, `changeRole`, `transferOwnership` and `reinstateMembership` MUST raise `OrgSuspendedError` / `OrgRevokedError` on a suspended or revoked org, before any write, whoever calls them. Removals still work.
+- Long-running work (a stream, a websocket, a long job) MUST re-check before each org-scoped step. An adopter MAY cache the result, but never beyond one request, one job execution, or one step of long-running work.
+- When `requireActiveOrg` throws, the adopter chooses 403 or not-found through its normal visibility path; it MUST NOT return 403 to every caller.
+- **Conformance cannot catch a missing adopter check** — like the `listOrgs` gate, the call site is the only control for these obligations.
 
 ## Memberships
 
@@ -122,7 +125,7 @@ Effect:
 - `mem.status = revoked`.
 - `mem.removed_by = NULL` (null distinguishes self-initiated).
 - Corresponding `tup_` row deleted.
-- Sessions scoped to this org (if any) terminated at the SDK layer.
+- Sessions are user-bound and are NOT terminated (`identity.md`); the member loses the org's grants because the `tup_` row is deleted.
 
 ### Admin-remove
 
@@ -137,7 +140,7 @@ Effect:
 - `mem.status = revoked`.
 - `mem.removed_by = admin.usr_id` (non-null value distinguishes admin-initiated).
 - Corresponding `tup_` row deleted.
-- Sessions scoped to this org terminated.
+- Sessions are user-bound and are NOT terminated (`identity.md`); the member loses the org's grants because the `tup_` row is deleted.
 
 The telltale field for audit attribution is `removed_by`: null for self-leave, non-null for admin-remove.
 
@@ -234,6 +237,6 @@ The mint-new-user path (`as_usr_id = null`) does not require `accepting_identifi
 
 - **`removed_by` attribution.** A membership revoked via `selfLeave` MUST have `removed_by = NULL`. A membership revoked via `adminRemove` MUST have `removed_by` set to the admin's `usr_id`.
 
-- **Org suspension (ADR 0026; fixtures to be written).** After `suspendOrg`, `requireActiveOrg` MUST raise `OrgSuspendedError` while the member's `check()` still returns `true`, their session is not revoked, and their PAT and the org's multi-use shares still verify; a single-use share presented during the suspension is consumed and refused. After `reinstateOrg` it MUST return the org with no membership or tuple re-created. After `revokeOrg` it MUST raise `OrgRevokedError`. A job created before `suspendOrg` and executed after it MUST be refused when it executes.
+- **Org suspension (ADR 0026; fixtures to be written).** After `suspendOrg`, `requireActiveOrg` MUST raise `OrgSuspendedError` while the member's `check()` still returns `true`, their session is not revoked, and their PAT and the org's multi-use shares still verify; a single-use share presented during the suspension is consumed and refused. After `reinstateOrg` it MUST return the org with no membership or tuple re-created. After `revokeOrg` it MUST raise `OrgRevokedError`. On a suspended org, `addMember`, `createInvitation`, `acceptInvitation`, `changeRole`, `transferOwnership` and `reinstateMembership` MUST raise `OrgSuspendedError` and write nothing. (Execution-time refusal of jobs is an adopter obligation with no fixture.)
 
 More fixtures will be added in `spec/conformance/` as implementations surface specific questions.

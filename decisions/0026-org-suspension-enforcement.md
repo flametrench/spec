@@ -87,11 +87,30 @@ token, or none.
 - **Not only requests:** queued jobs, scheduled tasks, webhook deliveries and event fan-out MUST
   pass `requireActiveOrg` **when they execute**, not only when they're created. Otherwise a job
   created before the suspension runs after it.
+- **Long-running work:** a stream, a websocket or a long job MUST re-check before each org-scoped
+  step, not only at its start. A cached result MUST NOT outlive one request, one job execution,
+  or one step of a long-running one.
 - **No existence oracle:** some callers would otherwise get a not-found for the object or org,
   such as a non-member or an unauthenticated caller. For them, the adopter MUST NOT expose
   `OrgSuspendedError` or `OrgRevokedError`, and MUST map both to that same not-found. The distinct
   codes are for callers who could already see that the org exists, such as its authenticated
   members.
+  - **How the adopter decides:** when `requireActiveOrg` throws, the adopter chooses between 403
+    and not-found through its normal visibility path, the same membership or `check()` it would
+    use to decide not-found for that caller and object.
+  - **What it must not do:** return 403 to every caller. That would turn the code into an
+    org-status oracle for any object id.
+- **The tenancy store refuses grant-creating changes in a suspended or revoked org (MUST).**
+  - **The operations:** `addMember`, `createInvitation`, `acceptInvitation`, `changeRole`,
+    `transferOwnership` and `reinstateMembership`.
+  - **What they raise:** `OrgSuspendedError` or `OrgRevokedError` at the SDK level, before any
+    write, whoever calls them, an operator included.
+  - **Why the store and not only the call site:** each of these creates or moves an org grant, and
+    the store already holds the org's status. So refusing there couples no capabilities, and it
+    holds even at a call site that forgot the precondition.
+  - **Still allowed:** removals (`selfLeave`, `adminRemove`, `suspendMembership`,
+    `revokeInvitation` and `declineInvitation`), which only reduce access. A member-facing route to
+    them is still org-scoped (above), so in practice an operator makes them.
 - **`check()` is unchanged.** A `check()` that returns `true` for a member of a suspended org is
   conformant. `check()` answers "does this grant exist", and `requireActiveOrg` answers "is this
   org open". An org-scoped operation needs both.
@@ -109,8 +128,10 @@ then `check()`. Skipping the precondition is a conformance failure, just as skip
 - **Why:** sessions serve the user's other orgs, and ending them would lock the user out of orgs
   that aren't suspended. Enforcing per request gives the same denial in the suspended org, and
   takes effect from the next request.
-- **Adopters that bind sessions to an org** (the MAY in `identity.md`) MAY also terminate those
-  sessions on suspension. The precondition still applies.
+- **`identity.md`'s MAY is unaffected.** It lets an application enforce org-bound sessions by
+  gating each cross-org request with `check()` against the current org. An adopter that also
+  keeps a session it binds to one org MAY terminate that session on suspension. The precondition
+  still applies either way.
 - **`identity.md` needs no change.** Its user-bound model is what this decision relies on.
 
 ### 3. Tokens: refused per request, not revoked (MUST)
@@ -141,22 +162,26 @@ then `check()`. Skipping the precondition is a conformance failure, just as skip
 
 ### 4. What is normative
 
-- **MUST:**
-  - `requireActiveOrg` and its two errors;
-  - the precondition on every org-scoped operation, for each org it touches, at execution time,
-    including jobs, schedules, webhooks and fan-out;
-  - not-found mapping for callers who couldn't already see the org;
-  - the operator exemption (§1), and the precondition on member-facing routes to those same
-    operations;
-  - both errors as `PreconditionError` subclasses, 403 to members, and the adopter's not-found to
-    everyone else;
-  - not terminating user-bound sessions;
-  - not revoking PATs or shares on suspension.
+- **MUST, SDK-level (the conformance fixtures gate these):**
+  - `requireActiveOrg` and its two errors, both `PreconditionError` subclasses;
+  - the tenancy store refusing grant-creating changes in a suspended or revoked org (§1);
+  - `suspendOrg` not terminating sessions or revoking PATs or shares;
+  - the operator operations (§1) succeeding on a suspended org.
+- **MUST, adopter obligations (no SDK fixture can gate these; like the `listOrgs` gate in
+  `security.md`, the call site is the only control):**
+  1. the precondition on every org-scoped operation, for each org it touches, using the target
+     object's org;
+  2. at execution time, for jobs, schedules, webhooks and fan-out, and before each step of
+     long-running work;
+  3. 403 to callers who could already see the org, and not-found to everyone else, decided
+     through the normal visibility path;
+  4. the precondition on member-facing routes to the operator operations;
+  5. a cached result that doesn't outlive one request, job execution or step.
 - **MAY:**
   - terminating org-bound sessions;
   - revoking a revoked org's tokens.
-- **Unchanged:** `check()`, `verifyShareToken`, `verifyPatToken`, membership and tuple handling on
-  suspension, and the revoke transition.
+- **Unchanged:** `check()`, `verifyShareToken`, `verifyPatToken`, the org's memberships and tuples
+  on suspension (both are kept), and the revoke transition.
 
 ## Consequences
 
@@ -166,9 +191,12 @@ then `check()`. Skipping the precondition is a conformance failure, just as skip
   suspension, which stays consumed (§3). Members, grants, sessions, PATs and every other share
   work again on the next request.
 - **Every org-scoped call site has one more line** (`requireActiveOrg`) and one more lookup, which
-  an adopter MAY cache per request. A cache MUST NOT outlive the request or the job execution.
+  an adopter MAY cache within §1's bound.
 - **The cost moves to adopters:** an adopter that skips the precondition at one call site reopens
-  the gap there. The conformance tests below make that visible.
+  the gap there. **Conformance can't catch a missing adopter check.** The fixtures test the SDK's
+  `requireActiveOrg` and the store's refusals, not the adopter's call sites, the same as the
+  `listOrgs` gate (`security.md`). The call site is the only control for §4's adopter
+  obligations.
 
 ## Conformance tests to add (a follow-up ticket; not written here)
 
@@ -190,11 +218,27 @@ then `check()`. Skipping the precondition is a conformance failure, just as skip
 - **Operator exemption:** `reinstateOrg` and `updateOrg` succeed on a suspended org from a
   system caller, without the precondition.
 - **Errors:** `OrgSuspendedError` and `OrgRevokedError` are `PreconditionError`s.
-- **Execution time, not enqueue time:** a job created while the org is active, and executed after
-  `suspendOrg`, is refused by `requireActiveOrg` when it executes.
+- **Store refuses grant changes:** on a suspended org, each of `addMember`, `createInvitation`,
+  `acceptInvitation`, `changeRole`, `transferOwnership` and `reinstateMembership` raises
+  `OrgSuspendedError` and writes nothing. On a revoked org they raise `OrgRevokedError`. After
+  `reinstateOrg`, `addMember` succeeds.
+
+**Notes for whoever writes the fixtures:**
+- Harnesses end a test at the first expected-error step. So "suspend → throws", "`check()` still
+  true" and "reinstate → passes" are separate tests.
+- `Expected` has only `error` and `error_matches`, so the fixtures assert the class names. The
+  `code` values (`precondition.org_suspended`, `precondition.org_revoked`) can't be asserted until
+  the format can.
+- §4's adopter obligations, including execution time for jobs, have no fixture. A fixture of
+  "`suspendOrg`, then `requireActiveOrg`" would pass while an adopter runs the job anyway. An
+  adopter proves them in its own tests.
 
 ## Out of scope / Deferred
 
+- **ADR 0002:73's "sessions scoped to the org terminated"** for `selfLeave`. It is the same
+  contradiction with `identity.md` that §2 fixes. This ADR corrects the normative chapter
+  (`tenancy.md`'s `selfLeave` and `adminRemove`), and `tenancy.md` governs. Amending ADR 0002's
+  rationale text is left to a later edit.
 - **User suspension.** It's covered by `identity.md` and isn't changed here.
 - **Billing, and the reasons for suspending.**
 - **A store-level object-to-org map** that would let `check()` enforce suspension. It's rejected
@@ -209,8 +253,13 @@ then `check()`. Skipping the precondition is a conformance failure, just as skip
 - **(a) `check()` MUST deny when the object's org isn't active.** Rejected. `check()` can't know an
   object's org, and rewrite rules derive grants through the org tuples that suspension keeps
   (Context). It would be complete only if the authorization store held every object's org.
-- **Delete the tuples on org suspension**, as membership suspension does. Rejected: reinstating
-  would then need re-provisioning, which `tenancy.md` rules out.
+- **Delete the org's role tuples on suspension, instead of a precondition.** Rejected as the
+  enforcement point, because of **coverage**:
+  - it can't reach direct object grants, share tokens or PATs, so a precondition would be needed
+    anyway;
+  - recreating the role tuples from the unchanged `active` `mem_` rows on reinstate would **not**
+    be re-provisioning (membership suspend and reinstate already work that way). The previous
+    draft's "re-provisioning" reason was wrong.
 - **Terminate every member's sessions.** Rejected: sessions are user-bound, and this would lock
   members out of their other orgs (§2).
 - **Revoke PATs and shares on suspension.** Rejected: it's irreversible, and it breaks lossless
