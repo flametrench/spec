@@ -205,8 +205,10 @@ A session terminates when any of the following occur:
 
 ### Operations
 
-- `createSession(usr_id, cred_id, ttl) → ses_id, token`.
-- `refreshSession(ses_id) → new_ses_id, new_token`.
+- `createSession(usr_id, cred_id, ttl, *, mfa_proof?) → session, token`. With `mfa_proof`, the proof is verified against `usr_id` and the session is created with `mfa_verified_at = now()` in one transaction (no session on failure). Without it, `mfa_verified_at = NULL`. (ADR 0030.)
+- `verifyMfaForSession(ses_id, mfa_proof) → session, token` — step-up: lock the session, require it active (and its user active), verify the proof against **the session's own `usr_id`**, then rotate it: a new session and token with `mfa_verified_at = now()`, and the old session revoked; atomic. (ADR 0030.)
+- `verifySessionToken(token, *, require_mfa_within?) → session` — with `require_mfa_within` (seconds, `(0, 1800]`), raises `MfaStepUpRequiredError` unless this session's `mfa_verified_at` is non-null and within the window. (ADR 0030.)
+- `refreshSession(ses_id) → new_ses_id, new_token` — the new session's `mfa_verified_at` is NULL.
 - `revokeSession(ses_id)`.
 - `listSessions(usr_id) → [session]`.
 
@@ -396,7 +398,7 @@ session.mfa_verified_at IS NOT NULL
   AND now() - session.mfa_verified_at < <step-up-window>
 ```
 
-Spec floor: 30 minutes. `refreshSession` does NOT carry `mfa_verified_at` forward — refresh-then-step-up is the right shape; MFA freshness MUST NOT be amortizable across refreshes.
+The window is at most 30 minutes; applications MAY tighten it. `mfa_verified_at` is set ONLY by `createSession(…, mfa_proof)` or `verifyMfaForSession(ses_id, proof)` — both verify the proof and stamp one session atomically (step-up stamps the new, rotated session); `verifyMfa` alone never touches a session. Enforce freshness with `verifySessionToken(token, { require_mfa_within })` (raises `MfaStepUpRequiredError`) or the predicate above on `session.mfa_verified_at`. `refreshSession` does NOT carry `mfa_verified_at` forward — refresh-then-step-up is the right shape; MFA freshness MUST NOT be amortizable across refreshes. Verification side effects (recovery-slot consumption, TOTP step, WebAuthn counter) roll back if the session write is refused. (ADR 0030, amending ADR 0008.)
 
 ### Per-user policy
 
