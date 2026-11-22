@@ -1,4 +1,4 @@
-# 0026 — Org suspension: who enforces it, and what it does to sessions and tokens
+# 0026 — Org suspension: a tuple pause plus a request precondition, and what it does to sessions and tokens
 
 **Status:** Proposed
 **Date:** 2026-11-22
@@ -24,12 +24,12 @@ written. It has three gaps.
    ([ADR 0012](./0012-share-tokens.md)) are bound to one object, which belongs to some org. The
    spec doesn't say what happens to either while the org is suspended.
 
-**Why `check()` can't be the enforcement point.**
+**Why `check()` can't be the whole enforcement point.**
 - **Objects are opaque to authorization.** A tuple's object is `(object_type, object_id)`, and the
   authorization capability has no map from an object to its org. Pattern B ("check org-level
   membership" via `project.parent_org`) is the application deriving the org, not the store.
-- **Rewrite rules make it worse.** They derive grants on child objects through org tuples that
-  suspension deliberately leaves in place. A `check()` that denied only on `object_type = org`
+- **Rewrite rules make it worse.** They derive grants on child objects through org tuples, which
+  today's suspension leaves in place. A `check()` that denied only on `object_type = org`
   would still grant `viewer` on every project that inherits from that org.
 - **The cost of closing it there:** making `check()` complete would mean the authorization store
   learns every object's org. That would merge the tenancy and authorization capabilities, which
@@ -37,7 +37,19 @@ written. It has three gaps.
 
 ## Decision
 
-### 1. The enforcement point: a normative org-active precondition (MUST)
+### 0. Two layers (owner's decision)
+
+Org suspension is enforced in two layers. Both are MUST:
+- **The tuple pause (§1a).** It runs inside the tenancy store, so `check()` denies every
+  membership-derived and rewrite-derived grant in a suspended org, even at a call site that forgot
+  the precondition. This is the fail-closed layer.
+- **The precondition (§1).** It covers what the tuple pause can't reach: direct object grants,
+  share tokens, PATs, and work with no `check()` at all.
+
+Neither layer alone is complete. Context explains why `check()` can't see an object's org, and the
+pause can't reach grants that aren't membership role tuples.
+
+### 1. The precondition: `requireActiveOrg` (MUST)
 
 A new tenancy operation:
 
@@ -103,21 +115,55 @@ token, or none.
 - **The tenancy store refuses grant-creating changes in a suspended or revoked org (MUST).**
   - **The operations:** `addMember`, `createInvitation`, `acceptInvitation`, `changeRole`,
     `transferOwnership` and `reinstateMembership`.
-  - **What they raise:** `OrgSuspendedError` or `OrgRevokedError` at the SDK level, before any
-    write, whoever calls them, an operator included.
+  - **What they raise:** `OrgSuspendedError` on a suspended org, and `OrgRevokedError` on a revoked
+    one unless an existing error already applies. They raise at the SDK level, before any write,
+    whoever calls them, an operator included.
   - **Why the store and not only the call site:** each of these creates or moves an org grant, and
     the store already holds the org's status. So refusing there couples no capabilities, and it
     holds even at a call site that forgot the precondition.
   - **Still allowed:** removals (`selfLeave`, `adminRemove`, `suspendMembership`,
     `revokeInvitation` and `declineInvitation`), which only reduce access. A member-facing route to
     them is still org-scoped (above), so in practice an operator makes them.
-- **`check()` is unchanged.** A `check()` that returns `true` for a member of a suspended org is
-  conformant. `check()` answers "does this grant exist", and `requireActiveOrg` answers "is this
-  org open". An org-scoped operation needs both.
+  - **Except `selfLeave` with `transferTo`:** a sole owner's leave performs an ownership transfer,
+    so it is refused like `transferOwnership`, with `OrgSuspendedError` and no write. To leave, the
+    operator reinstates the org first. A `selfLeave` that needs no transfer is still allowed.
+- **`check()` the operation is unchanged.** With §1a's pause, it denies membership-derived grants in
+  a suspended org. It can still return `true` for a direct object grant in that org, which is why
+  §1 is needed too. `check()` answers "does this grant exist", and `requireActiveOrg` answers "is
+  this org open". An org-scoped operation needs both.
 
-**What this implies for the rejected option (a):** with (b), `check()` alone is never the lockout.
-Every adopter call site that authorizes an org-scoped operation has two steps: the precondition,
-then `check()`. Skipping the precondition is a conformance failure, just as skipping `check()` is.
+**What this implies for the rejected option (a):** `check()` alone is never the whole lockout. Every
+adopter call site that authorizes an org-scoped operation has two steps: the precondition, then
+`check()`. A call site that skips the precondition still gets §1a's denial for membership-derived
+grants, but not for direct grants, shares or PATs.
+
+### 1a. The tuple pause (MUST)
+
+- **`suspendOrg`:** in the same transaction as the status change, it deletes the membership role
+  tuple `(usr, <role>, org, <org_id>)` of every `active` membership of the org. The `mem_` rows
+  stay `active` and unchanged.
+- **`reinstateOrg`:** in the same transaction, it re-creates that tuple for every membership that
+  is `active` at reinstate time, from its unchanged `mem_` row (`relation = mem.role`). Suspended
+  and revoked memberships get no tuple, whether they were suspended before or during the org's
+  suspension. The re-created tuples are new `tup_` rows, and nothing in the spec references a
+  membership tuple's id. This is the same as membership reinstate, and nothing is re-provisioned.
+- **Invariant:** while an org is `suspended`, none of its membership role tuples exist.
+- **Atomicity:** a store operation that would create a membership role tuple reads the org's status
+  and writes the tuple atomically with respect to `suspendOrg`, for example by locking the org row.
+  Otherwise a concurrent `addMember` could leave a tuple behind.
+- **What `check()` then does:** with no tuples changed beyond these, `check(member, role, org)` is
+  `false` while the org is suspended, and so is every grant a rewrite rule derives through those
+  org tuples. Both are `true` again after reinstating.
+- **What it doesn't touch:** direct object tuples (for example an invitation's `pre_tuples`,
+  `editor` on a project) and tuples of other subjects stay in place. The precondition covers them.
+- **The membership-as-tuple duality has one exception:** while its org is suspended, an `active`
+  membership has no `tup_` row. `tenancy.md` says so.
+- **Adopters MUST write org membership role tuples (the `owner`, `admin`, `member` and `guest`
+  relations on `org`) only through tenancy operations,** never with a direct authz `createTuple`.
+  This states the premise ADR 0002's duality already relies on. A direct write would survive the pause, or re-grant during it.
+  This is an adopter obligation (§4).
+- **`revokeOrg`** is unchanged. It transitions memberships to `revoked`, which deletes their tuples
+  if any are still present.
 
 ### 2. Sessions: enforced per request, not terminated (MUST)
 
@@ -164,7 +210,10 @@ then `check()`. Skipping the precondition is a conformance failure, just as skip
 
 - **MUST, SDK-level (the conformance fixtures gate these):**
   - `requireActiveOrg` and its two errors, both `PreconditionError` subclasses;
-  - the tenancy store refusing grant-creating changes in a suspended or revoked org (§1);
+  - the tuple pause: `suspendOrg` deletes the org's membership role tuples, and `reinstateOrg`
+    re-creates them for memberships still `active` (§1a);
+  - the tenancy store refusing grant-creating changes in a suspended or revoked org, including a
+    `selfLeave` with `transferTo` (§1);
   - `suspendOrg` not terminating sessions or revoking PATs or shares;
   - the operator operations (§1) succeeding on a suspended org.
 - **MUST, adopter obligations (no SDK fixture can gate these; like the `listOrgs` gate in
@@ -176,17 +225,24 @@ then `check()`. Skipping the precondition is a conformance failure, just as skip
   3. 403 to callers who could already see the org, and not-found to everyone else, decided
      through the normal visibility path;
   4. the precondition on member-facing routes to the operator operations;
-  5. a cached result that doesn't outlive one request, job execution or step.
+  5. a cached result that doesn't outlive one request, job execution or step;
+  6. writing org membership role tuples only through tenancy operations (§1a).
 - **MAY:**
   - terminating org-bound sessions;
   - revoking a revoked org's tokens.
-- **Unchanged:** `check()`, `verifyShareToken`, `verifyPatToken`, the org's memberships and tuples
-  on suspension (both are kept), and the revoke transition.
+- **Unchanged:** the `check()` operation, `verifyShareToken`, `verifyPatToken`, the org's `mem_`
+  rows on suspension (they stay `active`), and the revoke transition.
 
 ## Consequences
 
 - **Following the spec gives a total lockout per org.** No org-scoped operation runs in a suspended
   org, whoever the bearer is and whenever the work was queued.
+- **`suspendOrg` and `reinstateOrg` become O(active members) writes** in one transaction.
+- **Behaviour change for existing stores:** suspending an org now changes what `check()` returns,
+  and membership changes on a suspended org are refused.
+- **A forgotten call site fails closed for membership grants.** Because of §1a, an adopter that
+  skips the precondition still gets `check()` denying membership-derived and rewrite-derived
+  grants. What stays open at such a call site is direct grants, shares and PATs.
 - **Reinstating is instant and lossless,** except for a single-use share presented during the
   suspension, which stays consumed (§3). Members, grants, sessions, PATs and every other share
   work again on the next request.
@@ -202,9 +258,22 @@ then `check()`. Skipping the precondition is a conformance failure, just as skip
 
 - **Suspended member denied:** an org with an active `mem_` and its `tup_`. After `suspendOrg`:
   - `requireActiveOrg` throws `OrgSuspendedError`;
-  - `check(member, role, org)` still returns `true`.
-- **Reinstate restores:** after `reinstateOrg`, `requireActiveOrg` returns the org, with no
-  membership or tuple re-created.
+  - `check(member, role, org)` returns `false`, and the `mem_` row is still `active`;
+  - with a rewrite rule granting `viewer` on a project through the org, `check(member, viewer,
+    project)` returns `false`;
+  - a direct tuple `(member, editor, project)` still makes `check` return `true` (the precondition
+    covers it).
+- **Reinstate restores:** after `reinstateOrg`, `requireActiveOrg` returns the org,
+  `check(member, role, org)` and the rewrite-derived `check` return `true`, and the `mem_` id is
+  unchanged (no membership re-created).
+- **Removed during suspension:** a member `selfLeave`s while the org is suspended. After
+  `reinstateOrg`, their membership is `revoked` and has no tuple.
+- **Suspended before:** a membership suspended before the org is suspended still has no tuple
+  after `reinstateOrg`.
+- **No write on refusal:** `addMember` on a suspended org raises `OrgSuspendedError` and creates
+  neither a `mem_` nor a `tup_`.
+- **Sole owner can't transfer while suspended:** a sole owner's `selfLeave(mem, transferTo)` raises
+  `OrgSuspendedError` and writes nothing. After `reinstateOrg`, it succeeds.
 - **Revoked:** after `revokeOrg`, `requireActiveOrg` throws `OrgRevokedError`.
 - **Unknown org:** throws the same not-found error as `getOrg`.
 - **Sessions survive:** after `suspendOrg`, the member's session is not revoked (`revoked_at` is
@@ -224,8 +293,8 @@ then `check()`. Skipping the precondition is a conformance failure, just as skip
   `reinstateOrg`, `addMember` succeeds.
 
 **Notes for whoever writes the fixtures:**
-- Harnesses end a test at the first expected-error step. So "suspend → throws", "`check()` still
-  true" and "reinstate → passes" are separate tests.
+- Harnesses end a test at the first expected-error step. So "suspend → throws", "`check()` false
+  while suspended" and "reinstate → passes" are separate tests.
 - `Expected` has only `error` and `error_matches`, so the fixtures assert the class names. The
   `code` values (`precondition.org_suspended`, `precondition.org_revoked`) can't be asserted until
   the format can.
@@ -237,12 +306,13 @@ then `check()`. Skipping the precondition is a conformance failure, just as skip
 
 - **ADR 0002:73's "sessions scoped to the org terminated"** for `selfLeave`. It is the same
   contradiction with `identity.md` that §2 fixes. This ADR corrects the normative chapter
-  (`tenancy.md`'s `selfLeave` and `adminRemove`), and `tenancy.md` governs. Amending ADR 0002's
-  rationale text is left to a later edit.
+  (`tenancy.md`'s `selfLeave` and `adminRemove`), and `tenancy.md` governs. Flametrench Spec asked
+  for the same one-line change in ADR 0002. It is left to a separate edit because this ADR's ticket
+  is scoped to `tenancy.md` and `identity.md`.
 - **User suspension.** It's covered by `identity.md` and isn't changed here.
 - **Billing, and the reasons for suspending.**
-- **A store-level object-to-org map** that would let `check()` enforce suspension. It's rejected
-  below, and could only return as its own ADR.
+- **A store-level object-to-org map** that would let `check()` enforce suspension for direct
+  grants too. It's rejected below, and could only return as its own ADR.
 - **Writing the conformance fixtures** above, which is a follow-up ticket.
 - **A non-consuming share resolve** (for example, `verifyShareToken(token, consume: false)` plus
   an atomic `consumeShare`), so the precondition can run before a single-use share is consumed. It
@@ -251,15 +321,14 @@ then `check()`. Skipping the precondition is a conformance failure, just as skip
 ## Alternatives considered
 
 - **(a) `check()` MUST deny when the object's org isn't active.** Rejected. `check()` can't know an
-  object's org, and rewrite rules derive grants through the org tuples that suspension keeps
-  (Context). It would be complete only if the authorization store held every object's org.
-- **Delete the org's role tuples on suspension, instead of a precondition.** Rejected as the
-  enforcement point, because of **coverage**:
-  - it can't reach direct object grants, share tokens or PATs, so a precondition would be needed
-    anyway;
-  - recreating the role tuples from the unchanged `active` `mem_` rows on reinstate would **not**
-    be re-provisioning (membership suspend and reinstate already work that way). The previous
-    draft's "re-provisioning" reason was wrong.
+  object's org (Context). It would be complete only if the authorization store held every object's
+  org. §1a gets the fail-closed part of (a) for membership grants without that coupling.
+- **The tuple pause alone, with no precondition.** Rejected, because of **coverage**: it can't reach
+  direct object grants, share tokens or PATs. (Re-creating role tuples from `active` `mem_` rows
+  on reinstate is not re-provisioning. An earlier draft wrongly gave that as a reason to reject
+  pausing tuples.)
+- **The precondition alone, with no tuple pause.** Rejected by the owner: a forgotten call site
+  would grant full access in a suspended org, and a missed call site is how the gap was found.
 - **Terminate every member's sessions.** Rejected: sessions are user-bound, and this would lock
   members out of their other orgs (§2).
 - **Revoke PATs and shares on suspension.** Rejected: it's irreversible, and it breaks lossless
