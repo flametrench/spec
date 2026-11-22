@@ -120,6 +120,12 @@
       "conformance_level": "MUST"
     },
     {
+      "path": "fixtures/tenancy/revoke-invitation-authz.json",
+      "capability": "tenancy",
+      "operation": "revoke_invitation",
+      "conformance_level": "MUST"
+    },
+    {
       "path": "fixtures/authorization/rewrite-rules/computed-userset.json",
       "capability": "authorization",
       "operation": "check",
