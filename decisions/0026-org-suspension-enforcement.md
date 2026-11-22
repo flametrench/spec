@@ -306,7 +306,9 @@ grants, but not for direct grants, shares or PATs.
   `reinstateOrg`.
 - **Operator exemption:** `reinstateOrg` and `updateOrg` succeed on a suspended org from a
   system caller, without the precondition.
-- **Errors:** `OrgSuspendedError` and `OrgRevokedError` are `PreconditionError`s.
+- **Errors:** vectors assert the specific class (`expected.error: OrgSuspendedError` /
+  `OrgRevokedError`), because harnesses match exactly (ADR 0027). The `PreconditionError` subtype
+  relation is verified by each SDK's unit tests, not by a fixture.
 - **Store refuses grant changes:** on a suspended org, each of `addMember`, `createInvitation`,
   `acceptInvitation`, `changeRole`, `transferOwnership` and `reinstateMembership` raises
   `OrgSuspendedError` and writes nothing. On a revoked org they raise `OrgRevokedError`. After
